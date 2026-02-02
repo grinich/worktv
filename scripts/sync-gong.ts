@@ -95,6 +95,7 @@ function deleteRecordingData(db: Database.Database, recordingId: string): void {
   db.prepare(`DELETE FROM speakers WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM video_files WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM chat_messages WHERE recording_id = ?`).run(recordingId);
+  db.prepare(`DELETE FROM participants WHERE recording_id = ?`).run(recordingId);
 }
 
 function insertSegments(
@@ -140,6 +141,33 @@ function insertSpeakers(
   });
 
   insertMany(speakers);
+}
+
+function insertParticipants(
+  db: Database.Database,
+  recordingId: string,
+  parties: GongParty[]
+): void {
+  const stmt = db.prepare(
+    `INSERT INTO participants (id, recording_id, name, email, user_id)
+     VALUES (?, ?, ?, ?, ?)`
+  );
+
+  const insertMany = db.transaction((pts: GongParty[]) => {
+    for (const party of pts) {
+      // Skip parties without a name or email
+      if (!party.name && !party.emailAddress) continue;
+      stmt.run(
+        `${recordingId}-${party.id}`,
+        recordingId,
+        party.name || party.emailAddress || "Unknown",
+        party.emailAddress || null,
+        party.userId || null
+      );
+    }
+  });
+
+  insertMany(parties);
 }
 
 function isRecentlySynced(db: Database.Database, recordingId: string): boolean {
@@ -249,14 +277,18 @@ async function processCall(
     if (speakers.length > 0) {
       insertSpeakers(db, recordingId, speakers);
     }
+    if (parties.length > 0) {
+      insertParticipants(db, recordingId, parties);
+    }
 
     const transcriptInfo =
       segments.length > 0
         ? `${segments.length} segments, ${speakers.length} speakers`
         : "no transcript";
+    const participantInfo = parties.length > 0 ? `, ${parties.length} participants` : "";
 
     console.log(
-      `   ✓ "${call.title}" - ${transcriptInfo}, ${call.media.toLowerCase()}`
+      `   ✓ "${call.title}" - ${transcriptInfo}${participantInfo}, ${call.media.toLowerCase()}`
     );
 
     return { synced: true, skipped: false, title: call.title };

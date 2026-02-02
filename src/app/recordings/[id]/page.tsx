@@ -4,6 +4,7 @@ import {
   getRecordingById,
   getSegmentsByRecordingId,
   getSpeakersByRecordingId,
+  getParticipantsByRecordingId,
   getRelatedRecordings,
   getVideoFilesByRecordingId,
   getChatMessagesByRecordingId,
@@ -14,6 +15,7 @@ import {
   dbRowToRecording,
   dbRowToClip,
   type RecordingRow,
+  type ParticipantRow,
 } from "@/lib/db";
 import { getRecording } from "@/data/mock-recordings";
 import { getZoomAccessToken } from "@/lib/zoom/auth";
@@ -45,7 +47,7 @@ export default async function RecordingPage({
   // Try mock data first (for demo IDs)
   const mockRecording = getRecording(id);
   if (mockRecording) {
-    return <RecordingPageContent recording={mockRecording} relatedRecordings={[]} videoViews={[]} summary={null} activeClip={null} clips={[]} />;
+    return <RecordingPageContent recording={mockRecording} relatedRecordings={[]} videoViews={[]} summary={null} activeClip={null} clips={[]} participants={[]} />;
   }
 
   // Try SQLite database
@@ -56,6 +58,7 @@ export default async function RecordingPage({
 
   const segments = getSegmentsByRecordingId(id);
   const speakers = getSpeakersByRecordingId(id);
+  const participants = getParticipantsByRecordingId(id);
   const relatedRecordings = getRelatedRecordings(row.title, id);
   const videoFiles = getVideoFilesByRecordingId(id);
   const chatMessages = getChatMessagesByRecordingId(id);
@@ -121,6 +124,7 @@ export default async function RecordingPage({
       mediaExpired={mediaExpired}
       activeClip={activeClip}
       clips={clips}
+      participants={participants}
     />
   );
 }
@@ -143,6 +147,7 @@ function RecordingPageContent({
   mediaExpired = false,
   activeClip,
   clips,
+  participants,
 }: {
   recording: {
     id: string;
@@ -177,6 +182,7 @@ function RecordingPageContent({
   mediaExpired?: boolean;
   activeClip: Clip | null;
   clips: Clip[];
+  participants: ParticipantRow[];
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -220,7 +226,7 @@ function RecordingPageContent({
         </div>
       </NavTitle>
 
-      <RecordingPlayer recording={recording} videoViews={videoViews} summary={summary} activeClip={activeClip} clips={clips} />
+      <RecordingPlayer recording={recording} videoViews={videoViews} summary={summary} activeClip={activeClip} clips={clips} participants={participants} />
 
       {relatedRecordings.length > 0 && (
         <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 light:border-zinc-200 light:bg-white">

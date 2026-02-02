@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { readFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { parseTranscript as parseZoomTranscript, extractSpeakers as extractZoomSpeakers } from "@/lib/zoom/transform";
+import type { ZoomParticipant, ZoomParticipantsResponse } from "@/types/zoom";
 
 // Load .env.local file
 config({ path: join(process.cwd(), ".env.local") });
@@ -78,6 +79,8 @@ interface Speaker {
   name: string;
   color: string;
 }
+
+// ZoomParticipant and ZoomParticipantsResponse imported from @/types/zoom
 
 // Config
 const DB_PATH = join(process.cwd(), "data", "recordings.db");
@@ -267,6 +270,49 @@ async function getMeetingSummary(
   }
 }
 
+async function getMeetingParticipants(
+  accessToken: string,
+  meetingId: string
+): Promise<ZoomParticipant[]> {
+  const allParticipants: ZoomParticipant[] = [];
+
+  const encodedId =
+    meetingId.startsWith("/") || meetingId.includes("//")
+      ? encodeURIComponent(encodeURIComponent(meetingId))
+      : encodeURIComponent(meetingId);
+
+  let nextPageToken: string | undefined;
+
+  do {
+    const url = new URL(`https://api.zoom.us/v2/past_meetings/${encodedId}/participants`);
+    url.searchParams.set("page_size", "300");
+    if (nextPageToken) {
+      url.searchParams.set("next_page_token", nextPageToken);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      // Return empty array on 404 (meeting might not have participant data)
+      if (response.status === 404) return [];
+      const error = await response.text();
+      throw new Error(`Failed to get participants: ${response.status} - ${error}`);
+    }
+
+    const data = (await response.json()) as ZoomParticipantsResponse;
+    if (data.participants) {
+      allParticipants.push(...data.participants);
+    }
+    nextPageToken = data.next_page_token;
+  } while (nextPageToken);
+
+  return allParticipants;
+}
+
 async function fetchTranscript(
   accessToken: string,
   url: string
@@ -443,6 +489,7 @@ function deleteRecordingData(db: Database.Database, recordingId: string): void {
   db.prepare(`DELETE FROM speakers WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM video_files WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM chat_messages WHERE recording_id = ?`).run(recordingId);
+  db.prepare(`DELETE FROM participants WHERE recording_id = ?`).run(recordingId);
 }
 
 function insertSegments(
@@ -539,6 +586,34 @@ function insertChatMessages(
   });
 
   insertMany(messages);
+}
+
+function insertParticipants(
+  db: Database.Database,
+  recordingId: string,
+  participants: ZoomParticipant[]
+): void {
+  const stmt = db.prepare(
+    `INSERT INTO participants (id, recording_id, name, email, user_id, join_time, leave_time, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const insertMany = db.transaction((parts: ZoomParticipant[]) => {
+    for (const p of parts) {
+      stmt.run(
+        `${recordingId}-${p.id}`,
+        recordingId,
+        p.name || p.user_name || "Unknown",
+        p.email || null,
+        p.user_id || null,
+        p.join_time,
+        p.leave_time,
+        p.duration
+      );
+    }
+  });
+
+  insertMany(participants);
 }
 
 function isRecentlySynced(db: Database.Database, recordingId: string): boolean {
@@ -681,8 +756,21 @@ async function processRecording(
       chatInfo = "chat fetch failed";
     }
 
+    // Fetch and store participants
+    let participantInfo = "no participants";
+    try {
+      const participants = await getMeetingParticipants(accessToken, meeting.uuid);
+      if (participants.length > 0) {
+        insertParticipants(db, recordingId, participants);
+        participantInfo = `${participants.length} participants`;
+      }
+    } catch (err) {
+      console.warn(`   ⚠ Failed to fetch participants: ${err instanceof Error ? err.message : err}`);
+      participantInfo = "participants fetch failed";
+    }
+
     console.log(
-      `   ✓ "${meeting.topic}" - ${transcriptInfo}, ${chatInfo}, ${allVideoFiles.length} views`
+      `   ✓ "${meeting.topic}" - ${transcriptInfo}, ${chatInfo}, ${participantInfo}, ${allVideoFiles.length} views`
     );
 
     return { synced: true, skipped: false, topic: meeting.topic };

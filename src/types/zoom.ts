@@ -58,3 +58,23 @@ export interface ZoomRecordingsListResponse {
 export interface ZoomRecordingDetailResponse extends ZoomMeeting {
   download_access_token?: string;
 }
+
+export interface ZoomParticipant {
+  id: string;
+  user_id?: string;
+  name: string;
+  user_name?: string;
+  email?: string;
+  join_time: string;
+  leave_time: string;
+  duration: number;
+  status?: string;
+}
+
+export interface ZoomParticipantsResponse {
+  page_count: number;
+  page_size: number;
+  total_records: number;
+  next_page_token?: string;
+  participants: ZoomParticipant[];
+}

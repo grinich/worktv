@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 interface Speaker {
   id: string;
@@ -16,12 +16,18 @@ interface TranscriptSegment {
   text: string;
 }
 
+interface Participant {
+  name: string;
+  email: string | null;
+}
+
 interface SpeakerTimelineProps {
   segments: TranscriptSegment[];
   speakers: Speaker[];
   duration: number;
   currentTime: number;
   onSeek: (time: number) => void;
+  participants?: Participant[];
 }
 
 interface SpeakerStats {
@@ -38,7 +44,36 @@ export function SpeakerTimeline({
   duration,
   currentTime,
   onSeek,
+  participants = [],
 }: SpeakerTimelineProps) {
+  const [hoveredSpeaker, setHoveredSpeaker] = useState<string | null>(null);
+
+  // Create a map of speaker names to participant emails (fuzzy match by name)
+  const speakerEmails = useMemo(() => {
+    const emailMap = new Map<string, string>();
+    for (const participant of participants) {
+      if (participant.email) {
+        // Try exact match first
+        emailMap.set(participant.name.toLowerCase(), participant.email);
+      }
+    }
+    return emailMap;
+  }, [participants]);
+
+  const getEmailForSpeaker = (speakerName: string): string | null => {
+    const lowerName = speakerName.toLowerCase();
+    // Try exact match
+    if (speakerEmails.has(lowerName)) {
+      return speakerEmails.get(lowerName) || null;
+    }
+    // Try partial match (speaker name contains participant name or vice versa)
+    for (const [participantName, email] of speakerEmails) {
+      if (lowerName.includes(participantName) || participantName.includes(lowerName)) {
+        return email;
+      }
+    }
+    return null;
+  };
   const speakerStats = useMemo(() => {
     const stats = new Map<string, SpeakerStats>();
 
@@ -136,15 +171,28 @@ export function SpeakerTimeline({
 
       {/* Speaker stats */}
       <div className="space-y-2">
-        {speakerStats.map((speaker) => (
+        {speakerStats.map((speaker) => {
+          const email = getEmailForSpeaker(speaker.name);
+          return (
           <div key={speaker.name} className="group">
             <div className="mb-1 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 <div
                   className="h-2.5 w-2.5 rounded-full"
                   style={{ backgroundColor: speaker.color }}
                 />
-                <span className="font-medium text-zinc-300 light:text-zinc-700">{speaker.name}</span>
+                <span
+                  className="cursor-default font-medium text-zinc-300 light:text-zinc-700"
+                  onMouseEnter={() => email && setHoveredSpeaker(speaker.name)}
+                  onMouseLeave={() => setHoveredSpeaker(null)}
+                >
+                  {speaker.name}
+                </span>
+                {hoveredSpeaker === speaker.name && email && (
+                  <div className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md bg-zinc-700 px-2 py-1 text-xs text-zinc-200 shadow-lg light:bg-zinc-800 light:text-zinc-100">
+                    {email}
+                  </div>
+                )}
               </div>
               <span className="text-zinc-500">
                 {formatTime(speaker.totalTime)} ({speaker.percentage.toFixed(0)}%)
@@ -188,7 +236,8 @@ export function SpeakerTimeline({
               ))}
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
     </div>
   );

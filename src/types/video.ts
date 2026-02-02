@@ -25,6 +25,16 @@ export interface Speaker {
   color: string;
 }
 
+export interface Participant {
+  id: string;
+  name: string;
+  email?: string;
+  userId?: string;
+  joinTime?: string;
+  leaveTime?: string;
+  duration?: number;
+}
+
 export interface Recording {
   id: string;
   title: string;

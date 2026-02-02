@@ -17,12 +17,24 @@ interface Speaker {
   count: number;
 }
 
+interface Participant {
+  email: string;
+  name: string;
+  count: number;
+}
+
+type FilterItem =
+  | { type: "speaker"; data: Speaker }
+  | { type: "participant"; data: Participant };
+
 export function SearchInput({
   defaultValue,
   defaultSpeakers,
+  defaultParticipant,
 }: {
   defaultValue?: string;
   defaultSpeakers?: string[];
+  defaultParticipant?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,9 +43,12 @@ export function SearchInput({
   const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>(
     defaultSpeakers ?? []
   );
+  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(
+    defaultParticipant ?? null
+  );
   const [isPending, startTransition] = useTransition();
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [speakersError, setSpeakersError] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -44,11 +59,13 @@ export function SearchInput({
   useEffect(() => {
     const urlQuery = searchParams.get("q") ?? "";
     const urlSpeakers = searchParams.getAll("speaker");
+    const urlParticipant = searchParams.get("participant");
     setQuery(urlQuery);
     setSelectedSpeakers(urlSpeakers);
+    setSelectedParticipant(urlParticipant);
   }, [searchParams]);
 
-  // Fetch speakers on mount
+  // Fetch speakers and participants on mount
   useEffect(() => {
     fetch("/api/speakers")
       .then((res) => {
@@ -58,24 +75,51 @@ export function SearchInput({
       .then(setSpeakers)
       .catch((err) => {
         console.error("Failed to fetch speakers:", err);
-        setSpeakersError(true);
+      });
+
+    fetch("/api/participants")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch participants");
+        return res.json();
+      })
+      .then(setParticipants)
+      .catch((err) => {
+        console.error("Failed to fetch participants:", err);
       });
   }, []);
 
-  // Filter speakers based on mention query and exclude already selected
-  const filteredSpeakers = useMemo(() => {
-    const availableSpeakers = speakers.filter(
-      (s) => !selectedSpeakers.includes(s.name)
-    );
-    if (!mentionQuery) return availableSpeakers;
+  // Combine and filter items based on mention query, excluding already selected speakers
+  const filteredItems = useMemo(() => {
+    const items: FilterItem[] = [];
     const lower = mentionQuery.toLowerCase();
-    return availableSpeakers.filter((s) => s.name.toLowerCase().includes(lower));
-  }, [speakers, mentionQuery, selectedSpeakers]);
 
-  // Reset highlighted index when filtered speakers change
+    // Add matching speakers (excluding already selected)
+    for (const speaker of speakers) {
+      if (selectedSpeakers.includes(speaker.name)) continue;
+      if (!mentionQuery || speaker.name.toLowerCase().includes(lower)) {
+        items.push({ type: "speaker", data: speaker });
+      }
+    }
+
+    // Add matching participants (only if no speakers selected)
+    if (selectedSpeakers.length === 0) {
+      for (const participant of participants) {
+        if (!mentionQuery ||
+            participant.email.toLowerCase().includes(lower) ||
+            participant.name.toLowerCase().includes(lower)) {
+          items.push({ type: "participant", data: participant });
+        }
+      }
+    }
+
+    // Sort by count (descending)
+    return items.sort((a, b) => b.data.count - a.data.count);
+  }, [speakers, participants, mentionQuery, selectedSpeakers]);
+
+  // Reset highlighted index when filtered items change
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [filteredSpeakers]);
+  }, [filteredItems]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -119,8 +163,8 @@ export function SearchInput({
     []
   );
 
-  const selectSpeaker = useCallback(
-    (speaker: Speaker) => {
+  const selectItem = useCallback(
+    (item: FilterItem) => {
       // Remove the @mention text from query
       const cursorPos = inputRef.current?.selectionStart ?? query.length;
       const textBeforeCursor = query.slice(0, cursorPos);
@@ -130,16 +174,27 @@ export function SearchInput({
         newQuery = (query.slice(0, atIndex) + query.slice(cursorPos).trimStart()).trim();
       }
 
-      // Add speaker to selected list
-      const newSpeakers = [...selectedSpeakers, speaker.name];
+      let newSpeakers = selectedSpeakers;
+      let newParticipant = selectedParticipant;
+
+      if (item.type === "speaker") {
+        // Add speaker to selected list, clear participant
+        newSpeakers = [...selectedSpeakers, item.data.name];
+        newParticipant = null;
+      } else {
+        // Set participant, clear speakers
+        newParticipant = item.data.email;
+        newSpeakers = [];
+      }
 
       // Update local state
       setSelectedSpeakers(newSpeakers);
+      setSelectedParticipant(newParticipant);
       setQuery(newQuery);
       setShowDropdown(false);
       setMentionQuery("");
 
-      // Navigate with new speaker filter
+      // Navigate with new filter
       startSearching();
       startTransition(() => {
         const params = new URLSearchParams();
@@ -149,14 +204,18 @@ export function SearchInput({
         if (view) params.set("view", view);
         if (source) params.set("source", source);
         if (newQuery) params.set("q", newQuery);
-        // Add all speakers
-        for (const s of newSpeakers) {
-          params.append("speaker", s);
+        // Add speakers or participant
+        if (newSpeakers.length > 0) {
+          for (const s of newSpeakers) {
+            params.append("speaker", s);
+          }
+        } else if (newParticipant) {
+          params.set("participant", newParticipant);
         }
         router.push(`/recordings?${params.toString()}`);
       });
     },
-    [query, selectedSpeakers, searchParams, router, startSearching, startTransition]
+    [query, selectedSpeakers, selectedParticipant, searchParams, router, startSearching, startTransition]
   );
 
   const removeSpeaker = useCallback(
@@ -186,6 +245,25 @@ export function SearchInput({
     [selectedSpeakers, query, searchParams, router, startSearching, startTransition]
   );
 
+  const removeParticipant = useCallback(() => {
+    setSelectedParticipant(null);
+
+    // Navigate without participant filter
+    startSearching();
+    startTransition(() => {
+      const params = new URLSearchParams();
+      // Preserve view and source params
+      const view = searchParams.get("view");
+      const source = searchParams.get("source");
+      if (view) params.set("view", view);
+      if (source) params.set("source", source);
+      if (query.trim()) params.set("q", query.trim());
+      router.push(`/recordings?${params.toString()}`);
+    });
+
+    inputRef.current?.focus();
+  }, [query, searchParams, router, startSearching, startTransition]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (!showDropdown) return;
@@ -193,27 +271,27 @@ export function SearchInput({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          i < filteredSpeakers.length - 1 ? i + 1 : 0
+          i < filteredItems.length - 1 ? i + 1 : 0
         );
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          i > 0 ? i - 1 : filteredSpeakers.length - 1
+          i > 0 ? i - 1 : filteredItems.length - 1
         );
-      } else if (e.key === "Enter" && filteredSpeakers.length > 0) {
+      } else if (e.key === "Enter" && filteredItems.length > 0) {
         e.preventDefault();
-        selectSpeaker(filteredSpeakers[highlightedIndex]);
+        selectItem(filteredItems[highlightedIndex]);
       } else if (e.key === "Escape") {
         setShowDropdown(false);
       }
     },
-    [showDropdown, filteredSpeakers, highlightedIndex, selectSpeaker]
+    [showDropdown, filteredItems, highlightedIndex, selectItem]
   );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (showDropdown && filteredSpeakers.length > 0) {
-      selectSpeaker(filteredSpeakers[highlightedIndex]);
+    if (showDropdown && filteredItems.length > 0) {
+      selectItem(filteredItems[highlightedIndex]);
       return;
     }
     startSearching();
@@ -225,13 +303,19 @@ export function SearchInput({
       if (view) params.set("view", view);
       if (source) params.set("source", source);
       if (query.trim()) params.set("q", query.trim());
-      // Add all speakers
-      for (const s of selectedSpeakers) {
-        params.append("speaker", s);
+      // Add all speakers or participant
+      if (selectedSpeakers.length > 0) {
+        for (const s of selectedSpeakers) {
+          params.append("speaker", s);
+        }
+      } else if (selectedParticipant) {
+        params.set("participant", selectedParticipant);
       }
       router.push(`/recordings?${params.toString()}`);
     });
   }
+
+  const hasFilter = selectedSpeakers.length > 0 || selectedParticipant;
 
   return (
     <form onSubmit={handleSubmit} className="relative flex-1">
@@ -254,13 +338,30 @@ export function SearchInput({
             </svg>
           </button>
         ))}
+        {selectedParticipant && (
+          <button
+            type="button"
+            onClick={removeParticipant}
+            className="flex items-center gap-1 rounded-md bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/30 light:bg-emerald-100 light:text-emerald-700 light:hover:bg-emerald-200"
+          >
+            <span>{selectedParticipant}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className="h-3 w-3"
+            >
+              <path d="M5.28 4.22a.75.75 0 00-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 101.06 1.06L8 9.06l2.72 2.72a.75.75 0 101.06-1.06L9.06 8l2.72-2.72a.75.75 0 00-1.06-1.06L8 6.94 5.28 4.22z" />
+            </svg>
+          </button>
+        )}
         <input
           ref={inputRef}
           type="text"
           placeholder={
-            selectedSpeakers.length > 0
-              ? "Add more speakers or search..."
-              : "Search recordings... (type @ to filter by speaker)"
+            hasFilter
+              ? "Add more filters or search..."
+              : "Search recordings... (type @ to filter by speaker or participant)"
           }
           value={query}
           onChange={handleInputChange}
@@ -287,30 +388,44 @@ export function SearchInput({
         </button>
       </div>
 
-      {/* Speaker autocomplete dropdown */}
-      {showDropdown && filteredSpeakers.length > 0 && (
+      {/* Autocomplete dropdown */}
+      {showDropdown && filteredItems.length > 0 && (
         <div
           ref={dropdownRef}
           className="absolute left-0 top-full z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-xl light:border-zinc-200 light:bg-white"
         >
-          {filteredSpeakers.map((speaker, index) => (
+          {filteredItems.map((item, index) => (
             <button
-              key={speaker.name}
+              key={item.type === "speaker" ? `s-${item.data.name}` : `p-${item.data.email}`}
               type="button"
-              onClick={() => selectSpeaker(speaker)}
+              onClick={() => selectItem(item)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                 index === highlightedIndex
                   ? "bg-indigo-500/20 text-zinc-100 light:bg-indigo-100 light:text-zinc-900"
                   : "text-zinc-300 hover:bg-white/5 light:text-zinc-700 light:hover:bg-zinc-100"
               }`}
             >
-              <div
-                className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: speaker.color }}
-              />
-              <span className="flex-1 truncate">{speaker.name}</span>
+              {item.type === "speaker" ? (
+                <>
+                  <div
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.data.color }}
+                  />
+                  <span className="flex-1 truncate">{item.data.name}</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-3 w-3 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <div className="flex-1 truncate">
+                    <span>{item.data.name}</span>
+                    <span className="ml-1 text-zinc-500">{item.data.email}</span>
+                  </div>
+                </>
+              )}
               <span className="text-xs text-zinc-500">
-                {speaker.count} meeting{speaker.count !== 1 ? "s" : ""}
+                {item.data.count} meeting{item.data.count !== 1 ? "s" : ""}
               </span>
             </button>
           ))}

@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { readFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import type { Recording, TranscriptSegment, Speaker, Clip } from "@/types/video";
+import type { Recording, TranscriptSegment, Speaker, Clip, Participant } from "@/types/video";
 
 const DB_PATH = join(process.cwd(), "data", "recordings.db");
 
@@ -137,6 +137,17 @@ export interface ClipRow {
   start_time: number;
   end_time: number;
   created_at: string;
+}
+
+export interface ParticipantRow {
+  id: string;
+  recording_id: string;
+  name: string;
+  email: string | null;
+  user_id: string | null;
+  join_time: string | null;
+  leave_time: string | null;
+  duration: number | null;
 }
 
 // Query functions
@@ -465,6 +476,134 @@ export function searchRecordingsWithSpeaker(
   }
 }
 
+// Participant functions
+export function getParticipantsByRecordingId(recordingId: string): ParticipantRow[] {
+  const db = getDb();
+  return db
+    .prepare(`SELECT * FROM participants WHERE recording_id = ?`)
+    .all(recordingId) as ParticipantRow[];
+}
+
+export function getParticipantsByRecordingIds(
+  recordingIds: string[]
+): Record<string, ParticipantRow[]> {
+  if (recordingIds.length === 0) return {};
+
+  const db = getDb();
+  const placeholders = recordingIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT * FROM participants WHERE recording_id IN (${placeholders})`
+    )
+    .all(...recordingIds) as ParticipantRow[];
+
+  return rows.reduce<Record<string, ParticipantRow[]>>((acc, row) => {
+    if (!acc[row.recording_id]) acc[row.recording_id] = [];
+    acc[row.recording_id].push(row);
+    return acc;
+  }, {});
+}
+
+export function getAllUniqueParticipants(): { email: string; name: string; count: number }[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT email, name, COUNT(DISTINCT recording_id) as count
+       FROM participants
+       WHERE email IS NOT NULL AND email != ''
+       GROUP BY email
+       ORDER BY count DESC, name ASC`
+    )
+    .all() as { email: string; name: string; count: number }[];
+}
+
+export function searchRecordingsWithParticipant(
+  query: string,
+  participantEmail: string,
+  source?: "zoom" | "gong" | "all"
+): RecordingRow[] {
+  const db = getDb();
+  const searchTerm = `%${escapeLikeWildcards(query)}%`;
+  const sourceFilter = source && source !== "all" ? source : null;
+
+  if (query.trim()) {
+    // Search with both text query and participant filter
+    if (sourceFilter) {
+      return db
+        .prepare(
+          `SELECT DISTINCT r.* FROM recordings r
+           INNER JOIN participants p ON r.id = p.recording_id
+           LEFT JOIN segments s ON r.id = s.recording_id
+           WHERE r.duration >= 60
+             AND r.source = ?
+             AND p.email = ?
+             AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+           ORDER BY r.created_at DESC`
+        )
+        .all(sourceFilter, participantEmail, searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+    }
+    return db
+      .prepare(
+        `SELECT DISTINCT r.* FROM recordings r
+         INNER JOIN participants p ON r.id = p.recording_id
+         LEFT JOIN segments s ON r.id = s.recording_id
+         WHERE r.duration >= 60
+           AND p.email = ?
+           AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+         ORDER BY r.created_at DESC`
+      )
+      .all(participantEmail, searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+  } else {
+    // Just filter by participant
+    if (sourceFilter) {
+      return db
+        .prepare(
+          `SELECT DISTINCT r.* FROM recordings r
+           INNER JOIN participants p ON r.id = p.recording_id
+           WHERE r.duration >= 60 AND r.source = ? AND p.email = ?
+           ORDER BY r.created_at DESC`
+        )
+        .all(sourceFilter, participantEmail) as RecordingRow[];
+    }
+    return db
+      .prepare(
+        `SELECT DISTINCT r.* FROM recordings r
+         INNER JOIN participants p ON r.id = p.recording_id
+         WHERE r.duration >= 60 AND p.email = ?
+         ORDER BY r.created_at DESC`
+      )
+      .all(participantEmail) as RecordingRow[];
+  }
+}
+
+export function insertParticipants(
+  recordingId: string,
+  participants: Participant[]
+): void {
+  const db = getDb();
+  const stmt = db.prepare(
+    `INSERT INTO participants (id, recording_id, name, email, user_id, join_time, leave_time, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const insertMany = db.transaction((parts: Participant[]) => {
+    for (const p of parts) {
+      stmt.run(
+        `${recordingId}-${p.id}`,
+        recordingId,
+        p.name,
+        p.email ?? null,
+        p.userId ?? null,
+        p.joinTime ?? null,
+        p.leaveTime ?? null,
+        p.duration ?? null
+      );
+    }
+  });
+
+  insertMany(participants);
+}
+
 export function getVideoFilesByRecordingId(recordingId: string): VideoFileRow[] {
   const db = getDb();
   return db
@@ -568,6 +707,7 @@ export function deleteRecordingData(recordingId: string): void {
   db.prepare(`DELETE FROM speakers WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM video_files WHERE recording_id = ?`).run(recordingId);
   db.prepare(`DELETE FROM chat_messages WHERE recording_id = ?`).run(recordingId);
+  db.prepare(`DELETE FROM participants WHERE recording_id = ?`).run(recordingId);
 }
 
 export function insertSegments(

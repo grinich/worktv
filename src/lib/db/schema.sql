@@ -86,3 +86,18 @@ CREATE TABLE IF NOT EXISTS clips (
 );
 
 CREATE INDEX IF NOT EXISTS idx_clips_recording ON clips(recording_id);
+
+CREATE TABLE IF NOT EXISTS participants (
+  id TEXT PRIMARY KEY,
+  recording_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  user_id TEXT,
+  join_time TEXT,
+  leave_time TEXT,
+  duration INTEGER,
+  FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_participants_recording ON participants(recording_id);
+CREATE INDEX IF NOT EXISTS idx_participants_email ON participants(email);
