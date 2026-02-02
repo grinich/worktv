@@ -2,14 +2,18 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-export function ViewToggle({ currentView }: { currentView: "list" | "calendar" }) {
+type ViewType = "list" | "calendar" | "clips";
+
+export function ViewToggle({ currentView }: { currentView: ViewType }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  function setView(view: "list" | "calendar") {
+  function setView(view: ViewType) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "calendar") {
       params.set("view", "calendar");
+    } else if (view === "clips") {
+      params.set("view", "clips");
     } else {
       params.delete("view");
     }
@@ -25,6 +29,7 @@ export function ViewToggle({ currentView }: { currentView: "list" | "calendar" }
             ? "bg-white/10 text-zinc-100 light:bg-zinc-200 light:text-zinc-900"
             : "text-zinc-400 hover:text-zinc-200 light:text-zinc-500 light:hover:text-zinc-700"
         }`}
+        title="List view"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -46,6 +51,7 @@ export function ViewToggle({ currentView }: { currentView: "list" | "calendar" }
             ? "bg-white/10 text-zinc-100 light:bg-zinc-200 light:text-zinc-900"
             : "text-zinc-400 hover:text-zinc-200 light:text-zinc-500 light:hover:text-zinc-700"
         }`}
+        title="Calendar view"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -58,6 +64,24 @@ export function ViewToggle({ currentView }: { currentView: "list" | "calendar" }
             d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z"
             clipRule="evenodd"
           />
+        </svg>
+      </button>
+      <button
+        onClick={() => setView("clips")}
+        className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+          currentView === "clips"
+            ? "bg-white/10 text-zinc-100 light:bg-zinc-200 light:text-zinc-900"
+            : "text-zinc-400 hover:text-zinc-200 light:text-zinc-500 light:hover:text-zinc-700"
+        }`}
+        title="Clips"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="h-4 w-4"
+        >
+          <path d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
         </svg>
       </button>
     </div>

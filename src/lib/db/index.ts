@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { readFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import type { Recording, TranscriptSegment, Speaker } from "@/types/video";
+import type { Recording, TranscriptSegment, Speaker, Clip } from "@/types/video";
 
 const DB_PATH = join(process.cwd(), "data", "recordings.db");
 
@@ -127,6 +127,15 @@ export interface SummaryRow {
   content: string;
   model: string;
   generated_at: string;
+}
+
+export interface ClipRow {
+  id: string;
+  recording_id: string;
+  title: string | null;
+  start_time: number;
+  end_time: number;
+  created_at: string;
 }
 
 // Query functions
@@ -555,5 +564,92 @@ export function upsertSummary(summary: {
     summary.model,
     new Date().toISOString()
   );
+}
+
+// Clip functions
+export function dbRowToClip(row: ClipRow): Clip {
+  return {
+    id: row.id,
+    recordingId: row.recording_id,
+    title: row.title,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    createdAt: row.created_at,
+  };
+}
+
+export function getAllClips(): ClipRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT c.* FROM clips c
+       INNER JOIN recordings r ON c.recording_id = r.id
+       ORDER BY c.created_at DESC`
+    )
+    .all() as ClipRow[];
+}
+
+export function getClipById(id: string): ClipRow | undefined {
+  const db = getDb();
+  return db
+    .prepare(`SELECT * FROM clips WHERE id = ?`)
+    .get(id) as ClipRow | undefined;
+}
+
+export function getClipsByRecordingId(recordingId: string): ClipRow[] {
+  const db = getDb();
+  return db
+    .prepare(`SELECT * FROM clips WHERE recording_id = ? ORDER BY start_time`)
+    .all(recordingId) as ClipRow[];
+}
+
+function generateClipTitle(recordingId: string, startTime: number, endTime: number): string | null {
+  const db = getDb();
+  const segments = db
+    .prepare(
+      `SELECT text FROM segments
+       WHERE recording_id = ? AND start_time < ? AND end_time > ?
+       ORDER BY start_time
+       LIMIT 5`
+    )
+    .all(recordingId, endTime, startTime) as { text: string }[];
+
+  if (segments.length === 0) return null;
+
+  const combinedText = segments.map((s) => s.text).join(" ");
+  if (combinedText.length <= 60) return combinedText;
+  return combinedText.slice(0, 57) + "...";
+}
+
+export function insertClip(clip: {
+  id: string;
+  recordingId: string;
+  title?: string;
+  startTime: number;
+  endTime: number;
+}): ClipRow {
+  const db = getDb();
+  const title = clip.title || generateClipTitle(clip.recordingId, clip.startTime, clip.endTime);
+  const createdAt = new Date().toISOString();
+
+  db.prepare(
+    `INSERT INTO clips (id, recording_id, title, start_time, end_time, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(clip.id, clip.recordingId, title, clip.startTime, clip.endTime, createdAt);
+
+  return {
+    id: clip.id,
+    recording_id: clip.recordingId,
+    title,
+    start_time: clip.startTime,
+    end_time: clip.endTime,
+    created_at: createdAt,
+  };
+}
+
+export function deleteClip(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM clips WHERE id = ?`).run(id);
+  return result.changes > 0;
 }
 

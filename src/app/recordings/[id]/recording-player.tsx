@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
-import type { Recording } from "@/types/video";
+import { useRef, useCallback, useState, useEffect } from "react";
+import type { Recording, Clip } from "@/types/video";
 import { useVideoPlayer } from "@/hooks/use-video-player";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { VideoPlayer } from "@/components/video/video-player";
@@ -12,6 +12,8 @@ import { ChatPanel } from "@/components/video/chat-panel";
 import { SpeakerTimeline } from "@/components/video/speaker-timeline";
 import { SummaryPanel } from "@/components/summary/summary-panel";
 import { CaptionOverlay } from "@/components/video/caption-overlay";
+import { ClipCreator } from "@/components/video/clip-creator";
+import { ClipsPanel } from "@/components/video/clips-panel";
 import type { AISummary } from "@/types/video";
 
 interface VideoView {
@@ -24,17 +26,21 @@ interface RecordingPlayerProps {
   recording: Recording;
   videoViews?: VideoView[];
   summary: AISummary | null;
+  activeClip?: Clip | null;
+  clips?: Clip[];
 }
 
 type PanelTab = "transcript" | "chat";
 
-export function RecordingPlayer({ recording, videoViews = [], summary }: RecordingPlayerProps) {
+export function RecordingPlayer({ recording, videoViews = [], summary, activeClip, clips = [] }: RecordingPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentViewIndex, setCurrentViewIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<PanelTab>("transcript");
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
+  const [isCreatingClip, setIsCreatingClip] = useState(false);
+  const [localClips, setLocalClips] = useState<Clip[]>(clips);
 
   const isAudioOnly = recording.mediaType === "audio";
   const mediaRef = isAudioOnly ? audioRef : videoRef;
@@ -46,6 +52,27 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
   const toggleCaptions = useCallback(() => {
     setCaptionsEnabled((prev) => !prev);
   }, []);
+
+  // Seek to clip start when activeClip is set and video loads
+  useEffect(() => {
+    if (!activeClip) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleLoadedMetadata = () => {
+      video.currentTime = activeClip.startTime;
+    };
+
+    if (video.readyState >= 1) {
+      video.currentTime = activeClip.startTime;
+    } else {
+      video.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
+    }
+
+    return () => {
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+    };
+  }, [activeClip]);
 
   // Use the selected view's URL, or fall back to recording.videoUrl
   const currentVideoUrl = videoViews.length > 0
@@ -162,6 +189,8 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
             isFullscreen={state.isFullscreen}
             captionsEnabled={captionsEnabled}
             hasCaptions={hasTranscript && !isAudioOnly}
+            activeClip={activeClip}
+            clips={localClips}
             onTogglePlay={togglePlay}
             onSeek={seek}
             onVolumeChange={setVolume}
@@ -169,7 +198,22 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
             onPlaybackRateChange={setPlaybackRate}
             onToggleFullscreen={isAudioOnly ? undefined : toggleFullscreen}
             onToggleCaptions={isAudioOnly ? undefined : toggleCaptions}
+            onCreateClip={() => setIsCreatingClip(true)}
           />
+
+          {isCreatingClip && (
+            <ClipCreator
+              recordingId={recording.id}
+              videoUrl={currentVideoUrl}
+              duration={state.duration}
+              currentTime={state.currentTime}
+              transcript={recording.transcript}
+              onClose={() => setIsCreatingClip(false)}
+              onClipCreated={(clip) => {
+                setLocalClips((prev) => [...prev, clip as Clip]);
+              }}
+            />
+          )}
 
           {videoViews.length > 1 && (
             <div className="mt-4 flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 p-1 light:border-zinc-200 light:bg-zinc-100">
@@ -202,6 +246,24 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
             </div>
           )}
         </section>
+
+        {/* Clips section */}
+        {localClips.length > 0 && (
+          <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 light:border-zinc-200 light:bg-white">
+            <div className="mb-3 text-sm font-semibold">Clips ({localClips.length})</div>
+            <ClipsPanel
+              clips={localClips}
+              activeClipId={activeClip?.id}
+              onClipSelect={(clip) => {
+                seek(clip.startTime);
+                play();
+              }}
+              onClipDelete={(clipId) => {
+                setLocalClips((prev) => prev.filter((c) => c.id !== clipId));
+              }}
+            />
+          </section>
+        )}
 
         {/* Transcript/Chat panel - collapsible */}
         {hasTranscript && (
