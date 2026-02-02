@@ -230,7 +230,7 @@ export function SearchInput({
         } else if (newParticipant) {
           params.set("participant", newParticipant);
         }
-        router.push(`/recordings?${params.toString()}`);
+        router.push(`/?${params.toString()}`);
       });
     },
     [query, selectedSpeakers, selectedParticipant, searchParams, router, startSearching, startTransition]
@@ -255,7 +255,7 @@ export function SearchInput({
         for (const s of newSpeakers) {
           params.append("speaker", s);
         }
-        router.push(`/recordings?${params.toString()}`);
+        router.push(`/?${params.toString()}`);
       });
 
       inputRef.current?.focus();
@@ -276,7 +276,7 @@ export function SearchInput({
       if (view) params.set("view", view);
       if (source) params.set("source", source);
       if (query.trim()) params.set("q", query.trim());
-      router.push(`/recordings?${params.toString()}`);
+      router.push(`/?${params.toString()}`);
     });
 
     inputRef.current?.focus();
@@ -329,7 +329,7 @@ export function SearchInput({
       } else if (selectedParticipant) {
         params.set("participant", selectedParticipant);
       }
-      router.push(`/recordings?${params.toString()}`);
+      router.push(`/?${params.toString()}`);
     });
   }
 
