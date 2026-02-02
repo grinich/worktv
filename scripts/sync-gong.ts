@@ -149,7 +149,7 @@ function insertParticipants(
   parties: GongParty[]
 ): void {
   const stmt = db.prepare(
-    `INSERT INTO participants (id, recording_id, name, email, user_id)
+    `INSERT OR REPLACE INTO participants (id, recording_id, name, email, user_id)
      VALUES (?, ?, ?, ?, ?)`
   );
 
