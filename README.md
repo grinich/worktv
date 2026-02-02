@@ -10,12 +10,16 @@ A powerful private video library for your team's meeting recordings. Sync record
 
 <table>
   <tr>
-    <td align="center"><img src="public/screenshots/grid-view.png" alt="Grid View" width="400" /><br /><em>Grid view</em></td>
-    <td align="center"><img src="public/screenshots/recording-detail.png" alt="Recording Detail" width="400" /><br /><em>Recording detail</em></td>
+    <td align="center"><img src="public/screenshots/grid-view.png" alt="Grid View (Light)" width="400" /><br /><em>Grid view (light)</em></td>
+    <td align="center"><img src="public/screenshots/grid-view-dark.png" alt="Grid View (Dark)" width="400" /><br /><em>Grid view (dark)</em></td>
   </tr>
   <tr>
+    <td align="center"><img src="public/screenshots/recording-detail.png" alt="Recording Detail" width="400" /><br /><em>Recording detail</em></td>
     <td align="center"><img src="public/screenshots/create-clip.png" alt="Create Clip" width="400" /><br /><em>Create clips</em></td>
+  </tr>
+  <tr>
     <td align="center"><img src="public/screenshots/calendar-view.png" alt="Calendar View" width="400" /><br /><em>Calendar view</em></td>
+    <td></td>
   </tr>
 </table>
 
