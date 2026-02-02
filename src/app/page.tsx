@@ -8,6 +8,7 @@ import {
   getSummariesByRecordingIds,
   getRecordingsPaginated,
   getRecordingsBySource,
+  getTotalRecordingsCount,
   getAllClipsWithRecordingTitle,
   dbRowToClip,
   type SearchResultRow,
@@ -149,6 +150,9 @@ export default async function HomePage({
           <ViewToggle currentView={isCalendarView ? "calendar" : isListView ? "list" : "grid"} />
           <SourceFilter currentSource={sourceFilter} />
           <SearchInput defaultValue={q} defaultSpeakers={speakers} defaultParticipant={participant} />
+          <span className="shrink-0 text-sm text-zinc-500">
+            {getTotalRecordingsCount(sourceFilter)} videos
+          </span>
         </div>
       </Suspense>
 

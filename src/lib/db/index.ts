@@ -172,6 +172,24 @@ export function getRecordingsBySource(
     .all(source) as RecordingRow[];
 }
 
+export function getTotalRecordingsCount(
+  source: "zoom" | "gong" | "all" = "all"
+): number {
+  const db = getDb();
+  if (source === "all") {
+    const result = db
+      .prepare(`SELECT COUNT(*) as count FROM recordings WHERE duration >= 60`)
+      .get() as { count: number };
+    return result.count;
+  }
+  const result = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM recordings WHERE duration >= 60 AND source = ?`
+    )
+    .get(source) as { count: number };
+  return result.count;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   hasMore: boolean;
