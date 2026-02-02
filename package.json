@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync": "tsx scripts/sync-zoom.ts"
+    "sync": "tsx scripts/sync-zoom.ts && tsx scripts/sync-gong.ts",
+    "sync:zoom": "tsx scripts/sync-zoom.ts",
+    "sync:gong": "tsx scripts/sync-gong.ts",
+    "db:clear": "rm -f data/recordings.db data/recordings.db-shm data/recordings.db-wal && echo 'Database cleared. Run npm run sync to re-populate.'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",

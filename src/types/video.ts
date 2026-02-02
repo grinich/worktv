@@ -33,6 +33,8 @@ export interface Recording {
   posterUrl?: string;
   duration: number;
   space: string;
+  source?: string; // 'zoom' | 'gong', defaults to 'zoom'
+  mediaType?: "video" | "audio"; // For Gong audio-only calls
   createdAt: string;
   speakers: Speaker[];
   transcript: TranscriptSegment[];

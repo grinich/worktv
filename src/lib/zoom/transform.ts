@@ -1,5 +1,6 @@
 import type { ZoomMeeting, ZoomRecordingFile } from "@/types/zoom";
 import type { Recording, TranscriptSegment, Speaker } from "@/types/video";
+import { SPEAKER_COLORS } from "@/lib/constants";
 
 export function parseTranscript(content: string): TranscriptSegment[] {
   // Try to detect format and parse accordingly
@@ -104,20 +105,11 @@ function parseVttTime(time: string): number {
 
 export function extractSpeakers(segments: TranscriptSegment[]): Speaker[] {
   const speakerNames = [...new Set(segments.map((s) => s.speaker))];
-  const colors = [
-    "#6366f1",
-    "#22c55e",
-    "#f59e0b",
-    "#ef4444",
-    "#8b5cf6",
-    "#06b6d4",
-    "#ec4899",
-  ];
 
   return speakerNames.map((name, i) => ({
     id: name.toLowerCase().replace(/\s+/g, "-"),
     name,
-    color: colors[i % colors.length],
+    color: SPEAKER_COLORS[i % SPEAKER_COLORS.length],
   }));
 }
 
