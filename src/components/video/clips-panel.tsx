@@ -43,7 +43,7 @@ export function ClipsPanel({ clips, activeClipId, onClipSelect, onClipDelete }: 
   if (clips.length === 0) {
     return (
       <div className="text-center text-sm text-zinc-500">
-        No clips yet. Create one using the Clip button above.
+        No clips yet. Create one using the Clip button in the video controls.
       </div>
     );
   }

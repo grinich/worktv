@@ -30,7 +30,13 @@ interface RecordingPlayerProps {
   clips?: Clip[];
 }
 
-type LeftPanelTab = "summary" | "transcript";
+type LeftPanelTab = "summary" | "transcript" | "clips";
+
+const TAB_LABELS: Record<LeftPanelTab, string> = {
+  summary: "AI Summary",
+  transcript: "Transcript",
+  clips: "Clips",
+};
 
 export function RecordingPlayer({ recording, videoViews = [], summary, activeClip, clips = [] }: RecordingPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -181,6 +187,19 @@ export function RecordingPlayer({ recording, videoViews = [], summary, activeCli
                   </svg>
                   Transcript
                 </button>
+                <button
+                  onClick={() => setLeftPanelTab("clips")}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                    leftPanelTab === "clips"
+                      ? "border-b-2 border-indigo-400 text-zinc-200 light:text-zinc-900"
+                      : "text-zinc-500 hover:text-zinc-300 light:hover:text-zinc-700"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+                  </svg>
+                  Clips{localClips.length > 0 && ` (${localClips.length})`}
+                </button>
               </div>
               <button
                 onClick={() => setShowLeftPanel(false)}
@@ -195,18 +214,32 @@ export function RecordingPlayer({ recording, videoViews = [], summary, activeCli
 
             {/* Tab content */}
             <div className="p-4">
-              {leftPanelTab === "summary" ? (
+              {leftPanelTab === "summary" && (
                 <SummaryPanel
                   summary={summary}
                   recordingId={recording.id}
                   hasTranscript={hasTranscript}
                   embedded
                 />
-              ) : (
+              )}
+              {leftPanelTab === "transcript" && (
                 <TranscriptPanel
                   segments={recording.transcript}
                   currentTime={state.currentTime}
                   onSeek={seekAndPlay}
+                />
+              )}
+              {leftPanelTab === "clips" && (
+                <ClipsPanel
+                  clips={localClips}
+                  activeClipId={activeClip?.id}
+                  onClipSelect={(clip) => {
+                    seek(clip.startTime);
+                    play();
+                  }}
+                  onClipDelete={(clipId) => {
+                    setLocalClips((prev) => prev.filter((c) => c.id !== clipId));
+                  }}
                 />
               )}
             </div>
@@ -227,7 +260,7 @@ export function RecordingPlayer({ recording, videoViews = [], summary, activeCli
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            {leftPanelTab === "summary" ? "AI Summary" : "Transcript"}
+            {TAB_LABELS[leftPanelTab]}
           </button>
         )}
 
@@ -339,23 +372,6 @@ export function RecordingPlayer({ recording, videoViews = [], summary, activeCli
           )}
         </section>
 
-        {/* Clips section */}
-        {localClips.length > 0 && (
-          <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 light:border-zinc-200 light:bg-white">
-            <div className="mb-3 text-sm font-semibold">Clips ({localClips.length})</div>
-            <ClipsPanel
-              clips={localClips}
-              activeClipId={activeClip?.id}
-              onClipSelect={(clip) => {
-                seek(clip.startTime);
-                play();
-              }}
-              onClipDelete={(clipId) => {
-                setLocalClips((prev) => prev.filter((c) => c.id !== clipId));
-              }}
-            />
-          </section>
-        )}
       </div>
     </div>
   );
