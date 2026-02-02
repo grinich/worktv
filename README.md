@@ -6,6 +6,38 @@
 
 A powerful private video library for your team's meeting recordings. Sync recordings from Zoom and Gong, then browse, search, clip, and share with full transcript support and AI-powered summaries.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/screenshot-1.png" alt="Grid view (light mode)" width="100%" />
+  <em>Grid view with animated GIF previews</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-2.png" alt="Grid view (dark mode)" width="100%" />
+  <em>Dark mode support</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-3.png" alt="List view" width="100%" />
+  <em>List view with detailed metadata</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-4.png" alt="Calendar view" width="100%" />
+  <em>Calendar view for browsing by date</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-5.png" alt="Recording detail with AI summary" width="100%" />
+  <em>Recording playback with transcript, speaker timeline, and AI-generated summary</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-6.png" alt="Create clip" width="100%" />
+  <em>Create shareable clips with transcript-based selection</em>
+</p>
+
 ## Features
 
 ### Video Playback
