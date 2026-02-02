@@ -589,6 +589,22 @@ export function getAllClips(): ClipRow[] {
     .all() as ClipRow[];
 }
 
+export interface ClipWithRecordingRow extends ClipRow {
+  recording_title: string;
+}
+
+export function getAllClipsWithRecordingTitle(): ClipWithRecordingRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT c.*, r.title as recording_title
+       FROM clips c
+       INNER JOIN recordings r ON c.recording_id = r.id
+       ORDER BY c.created_at DESC`
+    )
+    .all() as ClipWithRecordingRow[];
+}
+
 export function getClipById(id: string): ClipRow | undefined {
   const db = getDb();
   return db
@@ -607,7 +623,7 @@ function generateClipTitle(recordingId: string, startTime: number, endTime: numb
   const db = getDb();
   const segments = db
     .prepare(
-      `SELECT text FROM segments
+      `SELECT text FROM transcript_segments
        WHERE recording_id = ? AND start_time < ? AND end_time > ?
        ORDER BY start_time
        LIMIT 5`
