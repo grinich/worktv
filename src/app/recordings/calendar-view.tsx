@@ -6,6 +6,7 @@ import { useMemo, useRef, useEffect } from "react";
 interface Recording {
   id: string;
   title: string;
+  custom_title?: string | null;
   duration: number;
   created_at: string;
   speakers: { id: string; name: string; color: string }[];
@@ -243,9 +244,9 @@ export function CalendarView({ recordings }: { recordings: Recording[] }) {
                       key={recording.id}
                       href={`/recordings/${encodeURIComponent(recording.id)}`}
                       className="truncate rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-300 transition hover:bg-zinc-700 light:bg-indigo-100 light:text-indigo-800 light:hover:bg-indigo-200"
-                      title={recording.title}
+                      title={recording.custom_title ?? recording.title}
                     >
-                      {recording.title}
+                      {recording.custom_title ?? recording.title}
                     </Link>
                   ))}
                   {dayRecordings.length > 3 && (

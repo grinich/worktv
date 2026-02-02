@@ -20,6 +20,7 @@ import { getZoomAccessToken } from "@/lib/zoom/auth";
 import { RecordingPlayer } from "./recording-player";
 import { LocalDateTime } from "@/components/local-datetime";
 import { NavTitle } from "@/components/nav-title";
+import { EditableTitle } from "@/components/editable-title";
 import type { AISummary, Clip } from "@/types/video";
 
 const VIEW_TYPE_LABELS: Record<string, string> = {
@@ -146,6 +147,7 @@ function RecordingPageContent({
   recording: {
     id: string;
     title: string;
+    customTitle?: string;
     description?: string;
     videoUrl: string;
     posterUrl?: string;
@@ -189,9 +191,12 @@ function RecordingPageContent({
 
       <NavTitle>
         <div className="text-center">
-          <h1 className="truncate text-lg font-semibold">
-            {recording.title}
-          </h1>
+          <EditableTitle
+            recordingId={recording.id}
+            originalTitle={recording.title}
+            customTitle={recording.customTitle}
+            className="truncate text-lg font-semibold"
+          />
           <p className="text-xs text-zinc-400 light:text-zinc-500">
             <LocalDateTime
               iso={recording.createdAt}
