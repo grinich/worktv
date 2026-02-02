@@ -5,6 +5,9 @@ import {
   searchRecordingsWithSpeaker,
   getSpeakersByRecordingIds,
   getRecordingsBySource,
+  getAllClips,
+  getRecordingById,
+  dbRowToClip,
 } from "@/lib/db";
 import { isZoomConfigured } from "@/lib/zoom/auth";
 import { isGongConfigured } from "@/lib/gong/auth";
@@ -12,6 +15,7 @@ import { SearchInput } from "./search-input";
 import { ViewToggle } from "./view-toggle";
 import { CalendarView } from "./calendar-view";
 import { SourceFilter } from "./source-filter";
+import { ClipsListView } from "./clips-list-view";
 import { LocalDateTime } from "@/components/local-datetime";
 import { RecordingPreview } from "./recording-preview";
 
@@ -25,6 +29,32 @@ export default async function RecordingsPage({
   // Parse source filter
   const sourceFilter = (source === "zoom" || source === "gong") ? source : "all";
 
+  const isCalendarView = view === "calendar";
+  const isClipsView = view === "clips";
+
+  // If clips view, fetch clips instead of recordings
+  if (isClipsView) {
+    const clipRows = getAllClips();
+    const clipsWithRecordings = clipRows.map((row) => {
+      const recording = getRecordingById(row.recording_id);
+      return {
+        ...dbRowToClip(row),
+        recordingTitle: recording?.title ?? "Unknown Recording",
+      };
+    });
+
+    return (
+      <div className="flex flex-col gap-4">
+        <Suspense fallback={<div className="h-10 animate-pulse rounded-xl bg-zinc-800 light:bg-zinc-200" />}>
+          <div className="flex items-center gap-3">
+            <ViewToggle currentView="clips" />
+          </div>
+        </Suspense>
+        <ClipsListView clips={clipsWithRecordings} />
+      </div>
+    );
+  }
+
   // Determine which query to run based on filters
   let recordings;
   if (speaker) {
@@ -34,8 +64,6 @@ export default async function RecordingsPage({
   } else {
     recordings = getRecordingsBySource(sourceFilter);
   }
-
-  const isCalendarView = view === "calendar";
 
   // Check which integrations are configured
   const zoomConfigured = isZoomConfigured();

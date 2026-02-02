@@ -3,7 +3,7 @@
 import { ProgressBar } from "./progress-bar";
 import { VolumeControl } from "./volume-control";
 import { PlaybackSpeed } from "./playback-speed";
-import { formatTime } from "@/types/video";
+import { formatTime, type Clip } from "@/types/video";
 
 interface VideoControlsProps {
   isPlaying: boolean;
@@ -15,6 +15,8 @@ interface VideoControlsProps {
   isFullscreen: boolean;
   captionsEnabled?: boolean;
   hasCaptions?: boolean;
+  activeClip?: Clip | null;
+  clips?: Clip[];
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onVolumeChange: (volume: number) => void;
@@ -22,6 +24,7 @@ interface VideoControlsProps {
   onPlaybackRateChange: (rate: number) => void;
   onToggleFullscreen?: () => void;
   onToggleCaptions?: () => void;
+  onCreateClip?: () => void;
 }
 
 export function VideoControls({
@@ -33,6 +36,8 @@ export function VideoControls({
   playbackRate,
   captionsEnabled,
   hasCaptions,
+  activeClip,
+  clips,
   onTogglePlay,
   onSeek,
   onVolumeChange,
@@ -40,6 +45,7 @@ export function VideoControls({
   onPlaybackRateChange,
   onToggleFullscreen,
   onToggleCaptions,
+  onCreateClip,
 }: VideoControlsProps) {
   return (
     <div className="mt-3 space-y-3">
@@ -48,6 +54,8 @@ export function VideoControls({
           currentTime={currentTime}
           duration={duration}
           onSeek={onSeek}
+          activeClip={activeClip}
+          clips={clips}
         />
       </div>
 
@@ -82,6 +90,19 @@ export function VideoControls({
         <div className="flex-1" />
 
         <PlaybackSpeed rate={playbackRate} onRateChange={onPlaybackRateChange} />
+
+        {onCreateClip && (
+          <button
+            onClick={onCreateClip}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200 light:text-zinc-500 light:hover:bg-zinc-100 light:hover:text-zinc-700"
+            title="Create clip"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+            </svg>
+            Clip
+          </button>
+        )}
 
         {hasCaptions && onToggleCaptions && (
           <button

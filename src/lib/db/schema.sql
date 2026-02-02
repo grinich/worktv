@@ -73,3 +73,15 @@ CREATE INDEX IF NOT EXISTS idx_summaries_recording ON summaries(recording_id);
 -- MIGRATION:ADD_COLUMN:recordings:source:TEXT DEFAULT 'zoom'
 -- MIGRATION:ADD_COLUMN:recordings:media_type:TEXT DEFAULT 'video'
 -- MIGRATION:ADD_COLUMN:recordings:media_url_expires_at:TEXT
+
+CREATE TABLE IF NOT EXISTS clips (
+  id TEXT PRIMARY KEY,
+  recording_id TEXT NOT NULL,
+  title TEXT,
+  start_time REAL NOT NULL,
+  end_time REAL NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_clips_recording ON clips(recording_id);

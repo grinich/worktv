@@ -41,6 +41,15 @@ export interface Recording {
   chatMessages?: ChatMessage[];
 }
 
+export interface Clip {
+  id: string;
+  recordingId: string;
+  title: string | null;
+  startTime: number;
+  endTime: number;
+  createdAt: string;
+}
+
 export interface PlaybackState {
   isPlaying: boolean;
   currentTime: number;

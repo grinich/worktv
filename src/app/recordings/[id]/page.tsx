@@ -9,7 +9,10 @@ import {
   getChatMessagesByRecordingId,
   getSummaryByRecordingId,
   isMediaUrlExpired,
+  getClipById,
+  getClipsByRecordingId,
   dbRowToRecording,
+  dbRowToClip,
   type RecordingRow,
 } from "@/lib/db";
 import { getRecording } from "@/data/mock-recordings";
@@ -17,7 +20,7 @@ import { getZoomAccessToken } from "@/lib/zoom/auth";
 import { RecordingPlayer } from "./recording-player";
 import { LocalDateTime } from "@/components/local-datetime";
 import { NavTitle } from "@/components/nav-title";
-import type { AISummary } from "@/types/video";
+import type { AISummary, Clip } from "@/types/video";
 
 const VIEW_TYPE_LABELS: Record<string, string> = {
   shared_screen_with_speaker_view: "Screen + Speaker",
@@ -29,16 +32,19 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
 
 export default async function RecordingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ clip?: string }>;
 }) {
   const { id: rawId } = await params;
+  const { clip: clipId } = await searchParams;
   const id = decodeURIComponent(rawId);
 
   // Try mock data first (for demo IDs)
   const mockRecording = getRecording(id);
   if (mockRecording) {
-    return <RecordingPageContent recording={mockRecording} relatedRecordings={[]} videoViews={[]} summary={null} />;
+    return <RecordingPageContent recording={mockRecording} relatedRecordings={[]} videoViews={[]} summary={null} activeClip={null} clips={[]} />;
   }
 
   // Try SQLite database
@@ -53,6 +59,18 @@ export default async function RecordingPage({
   const videoFiles = getVideoFilesByRecordingId(id);
   const chatMessages = getChatMessagesByRecordingId(id);
   const summaryRow = getSummaryByRecordingId(id);
+  const clipRows = getClipsByRecordingId(id);
+  const clips = clipRows.map(dbRowToClip);
+
+  // Get active clip if specified
+  let activeClip: Clip | null = null;
+  if (clipId) {
+    const clipRow = getClipById(clipId);
+    if (clipRow && clipRow.recording_id === id) {
+      activeClip = dbRowToClip(clipRow);
+    }
+  }
+
   let summary: AISummary | null = null;
   if (summaryRow) {
     try {
@@ -100,6 +118,8 @@ export default async function RecordingPage({
       videoViews={videoViews}
       summary={summary}
       mediaExpired={mediaExpired}
+      activeClip={activeClip}
+      clips={clips}
     />
   );
 }
@@ -120,6 +140,8 @@ function RecordingPageContent({
   videoViews,
   summary,
   mediaExpired = false,
+  activeClip,
+  clips,
 }: {
   recording: {
     id: string;
@@ -151,6 +173,8 @@ function RecordingPageContent({
   videoViews: { viewType: string; label: string; videoUrl: string }[];
   summary: AISummary | null;
   mediaExpired?: boolean;
+  activeClip: Clip | null;
+  clips: Clip[];
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -191,7 +215,7 @@ function RecordingPageContent({
         </div>
       </NavTitle>
 
-      <RecordingPlayer recording={recording} videoViews={videoViews} summary={summary} />
+      <RecordingPlayer recording={recording} videoViews={videoViews} summary={summary} activeClip={activeClip} clips={clips} />
 
       {relatedRecordings.length > 0 && (
         <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 light:border-zinc-200 light:bg-white">

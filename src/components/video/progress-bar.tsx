@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import type { Clip } from "@/types/video";
 
 interface ProgressBarProps {
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
+  activeClip?: Clip | null;
+  clips?: Clip[];
 }
 
-export function ProgressBar({ currentTime, duration, onSeek }: ProgressBarProps) {
+export function ProgressBar({ currentTime, duration, onSeek, activeClip, clips = [] }: ProgressBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
 
   const handleClick = useCallback(
@@ -31,10 +34,25 @@ export function ProgressBar({ currentTime, duration, onSeek }: ProgressBarProps)
     >
       {/* Visual bar */}
       <div className="relative h-1 w-full rounded-full bg-zinc-700 transition-all group-hover:h-1.5 light:bg-zinc-300">
+        {/* Clip markers */}
+        {clips.map((clip) => {
+          const startPercent = duration > 0 ? (clip.startTime / duration) * 100 : 0;
+          const widthPercent = duration > 0 ? ((clip.endTime - clip.startTime) / duration) * 100 : 0;
+          const isActive = activeClip?.id === clip.id;
+          return (
+            <div
+              key={clip.id}
+              className={`absolute inset-y-0 rounded-full ${isActive ? "bg-amber-500/60" : "bg-amber-500/30"}`}
+              style={{ left: `${startPercent}%`, width: `${widthPercent}%` }}
+            />
+          );
+        })}
+        {/* Progress indicator */}
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-indigo-500"
           style={{ width: `${progress}%` }}
         />
+        {/* Playhead */}
         <div
           className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100 light:bg-zinc-700"
           style={{ left: `calc(${progress}% - 6px)` }}
