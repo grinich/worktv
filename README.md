@@ -58,6 +58,26 @@ npm run sync -- --years=1
 npm run sync -- --force
 ```
 
+## Preview Thumbnails
+
+Generate animated GIF previews that play on hover in the recordings list:
+
+```bash
+# Install ffmpeg (required)
+brew install ffmpeg
+
+# Generate previews for all recordings without one
+npm run generate-previews
+
+# Regenerate all previews
+npm run generate-previews -- --force
+
+# Process only N recordings
+npm run generate-previews -- --limit=5
+```
+
+The script extracts multiple candidate clips from each video, then uses AI to pick the best one based on visual quality and content. Requires `ANTHROPIC_API_KEY` in `.env.local` for AI selection (falls back to middle candidate if not set).
+
 ## Keyboard Shortcuts
 
 | Key | Action |

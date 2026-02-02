@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "rm -rf .next/dev/lock && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "sync": "tsx scripts/sync-zoom.ts && tsx scripts/sync-gong.ts",
     "sync:zoom": "tsx scripts/sync-zoom.ts",
     "sync:gong": "tsx scripts/sync-gong.ts",
+    "generate-previews": "tsx scripts/generate-previews.ts",
     "db:clear": "rm -f data/recordings.db data/recordings.db-shm data/recordings.db-wal && echo 'Database cleared. Run npm run sync to re-populate.'"
   },
   "dependencies": {

@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS recordings (
   media_type TEXT DEFAULT 'video',
   media_url_expires_at TEXT,
   created_at TEXT NOT NULL,
-  synced_at TEXT NOT NULL
+  synced_at TEXT NOT NULL,
+  poster_url TEXT,
+  preview_gif_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS video_files (
