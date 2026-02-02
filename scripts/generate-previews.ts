@@ -38,6 +38,31 @@ const timingStats = {
   retriesSucceeded: 0,
 };
 
+// Recording results for final summary
+interface RecordingResult {
+  id: string;
+  title: string;
+  source: "Zoom" | "Gong" | "Other";
+  status: "success" | "failed" | "no-url" | "no-gifs" | "error";
+  duration: number;
+  error?: string;
+}
+const recordingResults: RecordingResult[] = [];
+
+// Logging helper - creates a prefixed logger for a recording
+function createLogger(index: number, total: number, title: string, source: string) {
+  const shortTitle = title.length > 35 ? title.slice(0, 32) + "..." : title;
+  const prefix = `[${(index + 1).toString().padStart(2)}/${total}] [${source.padEnd(4)}]`;
+
+  return {
+    start: () => console.log(`\n${prefix} "${shortTitle}"`),
+    step: (emoji: string, msg: string) => console.log(`${prefix}   ${emoji} ${msg}`),
+    detail: (msg: string) => console.log(`${prefix}      ${msg}`),
+    success: (msg: string) => console.log(`${prefix}   ✅ ${msg}`),
+    fail: (msg: string) => console.log(`${prefix}   ❌ ${msg}`),
+  };
+}
+
 // Format milliseconds to human-readable string
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -243,10 +268,7 @@ interface ExtractGifOptions {
 }
 
 async function extractGif(opts: ExtractGifOptions): Promise<boolean> {
-  const { videoUrl, startTime, outputPath, recordingTitle, candidateNum, attemptNum, maxAttempts } = opts;
-  const timestampStr = `${Math.floor(startTime/60)}:${(startTime%60).toString().padStart(2, "0")}`;
-  const logPrefix = `      [${recordingTitle.slice(0, 30)}] Candidate ${candidateNum} @ ${timestampStr}`;
-  const attemptInfo = attemptNum > 1 ? ` (attempt ${attemptNum}/${maxAttempts})` : "";
+  const { videoUrl, startTime, outputPath, candidateNum, attemptNum, maxAttempts } = opts;
 
   return new Promise((resolve) => {
     const ffmpegStart = Date.now();
@@ -299,34 +321,27 @@ async function extractGif(opts: ExtractGifOptions): Promise<boolean> {
           // Check for signs of slow sequential download vs fast Range seek
           const hadRangeRequest = stderr.includes("Range:") || stderr.includes("bytes=");
           const seekableDetected = stderr.includes("seekable: 1") || stderr.includes("is_streamed=0");
-          console.log(`        [DEBUG] ✓ Done in ${elapsed}ms (Range: ${hadRangeRequest}, Seekable: ${seekableDetected})`);
+          console.log(`        [DEBUG] GIF ${candidateNum} done in ${elapsed}ms (Range: ${hadRangeRequest}, Seekable: ${seekableDetected})`);
         }
         resolve(true);
       } else {
-        const willRetry = attemptNum < maxAttempts;
-        const retryMsg = willRetry ? " → will retry" : "";
-        console.log(`      ✗ FAILED${attemptInfo}: ${logPrefix} (${formatDuration(elapsed)}, exit=${code})${retryMsg}`);
         if (DEBUG_FFMPEG && stderr) {
-          console.log(`        [DEBUG] stderr: ${stderr.slice(-300)}`);
+          console.log(`        [DEBUG] GIF ${candidateNum} failed (exit=${code}): ${stderr.slice(-200)}`);
         }
         resolve(false);
       }
     });
 
     ffmpeg.on("error", (err) => {
-      const willRetry = attemptNum < maxAttempts;
-      const retryMsg = willRetry ? " → will retry" : "";
-      console.log(`      ✗ ERROR${attemptInfo}: ${logPrefix}: ${err.message}${retryMsg}`);
+      if (DEBUG_FFMPEG) {
+        console.log(`        [DEBUG] GIF ${candidateNum} error: ${err.message}`);
+      }
       resolve(false);
     });
 
     // Timeout - use SIGKILL for forceful termination (SIGTERM may not work if blocked on I/O)
     setTimeout(() => {
-      const elapsed = Date.now() - ffmpegStart;
       timingStats.timeouts++;
-      const willRetry = attemptNum < maxAttempts;
-      const retryMsg = willRetry ? " → will retry" : " → NO MORE RETRIES";
-      console.log(`      ⏱ TIMEOUT${attemptInfo}: ${logPrefix} after ${formatDuration(elapsed)}${retryMsg}`);
       ffmpeg.kill("SIGKILL");
       // Clean up partial output file if it exists
       if (existsSync(outputPath)) {
@@ -414,10 +429,20 @@ async function processRecording(
   db: Database.Database,
   recording: RecordingRow,
   accessToken: string,
-  parallelGifs: number
+  parallelGifs: number,
+  index: number,
+  total: number
 ): Promise<boolean> {
   const totalStart = Date.now();
-  console.log(`\n📹 Processing "${recording.title}"...`);
+
+  // Determine source type
+  const isZoom = recording.id.startsWith("zoom_");
+  const isGong = recording.id.startsWith("gong_");
+  const source = isZoom ? "Zoom" : isGong ? "Gong" : "Other";
+  const gongCallId = isGong ? recording.id.replace("gong_", "") : null;
+
+  const log = createLogger(index, total, recording.title, source);
+  log.start();
 
   // Create temp directory for this recording
   const tempDir = join(TEMP_DIR, recording.id.replace(/[^a-zA-Z0-9]/g, "_"));
@@ -429,26 +454,25 @@ async function processRecording(
   try {
     // --- URL Fetching ---
     const urlStart = Date.now();
-    const isZoom = recording.id.startsWith("zoom_");
-    const isGong = recording.id.startsWith("gong_");
-    const gongCallId = isGong ? recording.id.replace("gong_", "") : null;
 
     if (isZoom) {
       // Zoom: fetch one URL, reuse for all extractions (supports concurrent Range requests)
       const meetingUuid = recording.id.replace("zoom_", "");
-      console.log("   🔄 Fetching fresh Zoom URL...");
+      log.step("🔗", "Fetching video URL...");
       const videoUrl = await getZoomRecordingUrl(accessToken, meetingUuid);
       if (!videoUrl) {
-        console.log("   ❌ Could not get fresh Zoom URL");
+        log.fail("Could not get video URL");
+        recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-url", duration: Date.now() - totalStart });
         return false;
       }
       videoSource = videoUrl;
     } else if (isGong) {
       // Gong: verify API access, but fetch fresh URL per extraction (URLs may not support concurrent use)
-      console.log("   🔄 Verifying Gong API access...");
+      log.step("🔗", "Verifying API access...");
       const testUrl = await getGongRecordingUrl(gongCallId!);
       if (!testUrl) {
-        console.log("   ❌ Could not get Gong URL");
+        log.fail("Could not get video URL");
+        recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-url", duration: Date.now() - totalStart });
         return false;
       }
       videoSource = ""; // Will fetch fresh URL per extraction
@@ -459,12 +483,13 @@ async function processRecording(
     timestamps = getCandidateTimestamps(recording.duration, NUM_CANDIDATES);
     const urlElapsed = Date.now() - urlStart;
     timingStats.urlFetch.push(urlElapsed);
-    console.log(`   ✓ URL ready (${formatDuration(urlElapsed)})`);
+    log.step("✓", `URL ready (${formatDuration(urlElapsed)})`);
 
     // --- GIF Extraction ---
     // FFmpeg uses HTTP Range requests to seek directly
     // For Gong: fetch fresh URL per extraction since URLs may not support concurrent access
-    console.log(`   🎞️  Extracting ${timestamps.length} candidates at: ${timestamps.map(t => `${Math.floor(t/60)}:${(t%60).toString().padStart(2, "0")}`).join(", ")} (${parallelGifs} parallel)`);
+    const timestampStrs = timestamps.map(t => `${Math.floor(t/60)}:${(t%60).toString().padStart(2, "0")}`);
+    log.step("🎞️", `Extracting ${timestamps.length} GIFs @ ${timestampStrs.join(", ")}`);
 
     const extractStart = Date.now();
 
@@ -482,10 +507,10 @@ async function processRecording(
 
           // For Gong, fetch fresh URL for each extraction (and retry)
           if (gongCallId) {
-            if (DEBUG_FFMPEG) console.log(`      [DEBUG] Fetching fresh Gong URL for candidate ${i + 1}...`);
+            if (DEBUG_FFMPEG) log.detail(`[DEBUG] Fetching fresh Gong URL for GIF ${i + 1}...`);
             const freshUrl = await getGongRecordingUrl(gongCallId);
             if (!freshUrl) {
-              console.log(`      ✗ Candidate ${i + 1} - could not get fresh URL`);
+              log.detail(`GIF ${i + 1} @ ${timestampStr}: ✗ no URL`);
               return null;
             }
             urlToUse = freshUrl;
@@ -494,7 +519,6 @@ async function processRecording(
           // Track retry attempts
           if (attempt > 1) {
             timingStats.retriesAttempted++;
-            console.log(`      ↻ Retrying candidate ${i + 1} @ ${timestampStr} (attempt ${attempt}/${maxAttempts})...`);
           }
 
           const success = await extractGif({
@@ -509,17 +533,17 @@ async function processRecording(
 
           if (success) {
             const gifElapsed = Date.now() - gifStart;
-            const retryNote = attempt > 1 ? ` (succeeded on attempt ${attempt})` : "";
+            const retryNote = attempt > 1 ? ` (retry ${attempt})` : "";
             if (attempt > 1) {
               timingStats.retriesSucceeded++;
             }
-            console.log(`      ✓ Candidate ${i + 1} @ ${timestampStr} (${formatDuration(gifElapsed)})${retryNote}`);
+            log.detail(`GIF ${i + 1} @ ${timestampStr}: ✓ ${formatDuration(gifElapsed)}${retryNote}`);
             return outputPath;
           }
         }
 
         const gifElapsed = Date.now() - gifStart;
-        console.log(`      ✗ Candidate ${i + 1} @ ${timestampStr} GAVE UP after ${maxAttempts} attempts (${formatDuration(gifElapsed)})`);
+        log.detail(`GIF ${i + 1} @ ${timestampStr}: ✗ failed after ${maxAttempts} attempts (${formatDuration(gifElapsed)})`);
         return null;
       },
       parallelGifs
@@ -531,19 +555,19 @@ async function processRecording(
     const candidatePaths = extractionResults.filter((p): p is string => p !== null);
 
     if (candidatePaths.length === 0) {
-      console.log("   ❌ No GIFs extracted successfully");
+      log.fail(`No GIFs extracted (0/${timestamps.length})`);
+      recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-gifs", duration: Date.now() - totalStart });
       return false;
     }
 
-    console.log(`   ✓ Extracted ${candidatePaths.length} candidates (${formatDuration(extractElapsed)} total)`);
+    log.step("✓", `Extracted ${candidatePaths.length}/${timestamps.length} GIFs (${formatDuration(extractElapsed)})`);
 
     // --- AI Selection ---
-    console.log("   🤖 Selecting best preview with AI...");
+    log.step("🤖", "Selecting best preview...");
     const aiStart = Date.now();
     const bestIndex = await pickBestGif(candidatePaths);
     const aiElapsed = Date.now() - aiStart;
     timingStats.aiSelection.push(aiElapsed);
-    console.log(`   ✓ Selected candidate ${bestIndex + 1} (${formatDuration(aiElapsed)})`);
 
     // Copy best GIF to public directory
     const baseFilename = recording.id.replace(/[^a-zA-Z0-9]/g, "_");
@@ -555,7 +579,6 @@ async function processRecording(
     execSync(`cp "${candidatePaths[bestIndex]}" "${gifPath}"`);
 
     // Extract first frame as poster image
-    console.log("   📸 Extracting poster frame...");
     execSync(
       `ffmpeg -i "${gifPath}" -vframes 1 -y "${posterPath}" 2>/dev/null`
     );
@@ -571,7 +594,8 @@ async function processRecording(
 
     const totalElapsed = Date.now() - totalStart;
     timingStats.total.push(totalElapsed);
-    console.log(`   ✓ Saved: ${previewUrl} + ${posterUrl} (total: ${formatDuration(totalElapsed)})`);
+    log.success(`Done in ${formatDuration(totalElapsed)} (GIF #${bestIndex + 1} selected)`);
+    recordingResults.push({ id: recording.id, title: recording.title, source, status: "success", duration: totalElapsed });
     return true;
   } finally {
     // Cleanup temp files
@@ -648,27 +672,50 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`Found ${recordings.length} recording(s) to process\n`);
+  // Count sources
+  const zoomCount = recordings.filter((r) => r.id.startsWith("zoom_")).length;
+  const gongCount = recordings.filter((r) => r.id.startsWith("gong_")).length;
+  const otherCount = recordings.length - zoomCount - gongCount;
+
+  console.log(`Found ${recordings.length} recording(s) to process:`);
+  if (zoomCount > 0) console.log(`   • ${zoomCount} Zoom`);
+  if (gongCount > 0) console.log(`   • ${gongCount} Gong`);
+  if (otherCount > 0) console.log(`   • ${otherCount} Other`);
+  console.log();
 
   // Get Zoom access token only if we have Zoom recordings
-  const hasZoomRecordings = recordings.some((r) => r.id.startsWith("zoom_"));
+  const hasZoomRecordings = zoomCount > 0;
   let accessToken = "";
   if (hasZoomRecordings) {
     console.log("🔑 Authenticating with Zoom...");
     accessToken = await getZoomAccessToken();
-    console.log("   ✓ Authenticated");
+    console.log("   ✓ Authenticated\n");
   }
 
   // Process recordings in parallel
-  console.log(`\n📥 Processing ${recordings.length} recordings (${parallelRecordings} parallel)...\n`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`Processing ${recordings.length} recordings (${parallelRecordings} parallel × ${parallelGifs} GIFs each)`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
   const results = await processInParallel(
     recordings,
-    async (recording) => {
+    async (recording, index) => {
+      const isZoom = recording.id.startsWith("zoom_");
+      const isGong = recording.id.startsWith("gong_");
+      const source = isZoom ? "Zoom" : isGong ? "Gong" : "Other";
       try {
-        return await processRecording(db, recording, accessToken, parallelGifs);
+        return await processRecording(db, recording, accessToken, parallelGifs, index, recordings.length);
       } catch (err) {
-        console.log(`   ❌ Error processing "${recording.title}": ${err}`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.log(`[${(index + 1).toString().padStart(2)}/${recordings.length}] [${source.padEnd(4)}] ❌ Error: ${errMsg}`);
+        recordingResults.push({
+          id: recording.id,
+          title: recording.title,
+          source: source as "Zoom" | "Gong" | "Other",
+          status: "error",
+          duration: 0,
+          error: errMsg,
+        });
         return false;
       }
     },
@@ -678,9 +725,35 @@ async function main(): Promise<void> {
   const success = results.filter((r) => r === true).length;
   const failed = results.filter((r) => r === false).length;
 
-  console.log(`\n✅ Done!`);
-  console.log(`   Success: ${success}`);
-  console.log(`   Failed: ${failed}`);
+  // Print results summary table
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`RESULTS SUMMARY`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+  // Group by status
+  const successResults = recordingResults.filter((r) => r.status === "success");
+  const failedResults = recordingResults.filter((r) => r.status !== "success");
+
+  if (successResults.length > 0) {
+    console.log(`\n✅ SUCCESS (${successResults.length}):`);
+    for (const r of successResults) {
+      const shortTitle = r.title.length > 50 ? r.title.slice(0, 47) + "..." : r.title;
+      console.log(`   [${r.source.padEnd(4)}] ${shortTitle.padEnd(50)} ${formatDuration(r.duration).padStart(8)}`);
+    }
+  }
+
+  if (failedResults.length > 0) {
+    console.log(`\n❌ FAILED (${failedResults.length}):`);
+    for (const r of failedResults) {
+      const shortTitle = r.title.length > 45 ? r.title.slice(0, 42) + "..." : r.title;
+      const reason = r.status === "no-url" ? "no URL" : r.status === "no-gifs" ? "no GIFs" : r.error || r.status;
+      console.log(`   [${r.source.padEnd(4)}] ${shortTitle.padEnd(45)} → ${reason}`);
+    }
+  }
+
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`TOTALS: ${success} success, ${failed} failed`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
   // Print timing statistics
   if (timingStats.total.length > 0) {
