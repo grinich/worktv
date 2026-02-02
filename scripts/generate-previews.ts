@@ -20,8 +20,8 @@ const GIF_DURATION = 3; // seconds
 const GIF_WIDTH = 320; // pixels
 const GIF_FPS = 10;
 const NUM_CANDIDATES = 5;
-const FFMPEG_TIMEOUT_MS = 90000; // 90 seconds per GIF extraction (increased from 60s)
-const MAX_RETRIES = 2; // retry failed extractions up to 2 times
+const FFMPEG_TIMEOUT_MS = 12000; // 12 seconds per GIF extraction
+const MAX_RETRIES = 1; // retry failed extractions once
 
 // Default parallelism settings (can be overridden via CLI args)
 const DEFAULT_PARALLEL_RECORDINGS = 3;
@@ -49,17 +49,22 @@ interface RecordingResult {
 }
 const recordingResults: RecordingResult[] = [];
 
-// Logging helper - creates a prefixed logger for a recording
+// Logging helper - buffers logs and prints them all at once when flush() is called
+// This prevents interleaved output when processing recordings in parallel
 function createLogger(index: number, total: number, title: string, source: string) {
-  const shortTitle = title.length > 35 ? title.slice(0, 32) + "..." : title;
-  const prefix = `[${(index + 1).toString().padStart(2)}/${total}] [${source.padEnd(4)}]`;
+  const shortTitle = title.length > 40 ? title.slice(0, 37) + "..." : title;
+  const prefix = `[${(index + 1).toString().padStart(2)}/${total}]`;
+  const lines: string[] = [];
 
   return {
-    start: () => console.log(`\n${prefix} "${shortTitle}"`),
-    step: (emoji: string, msg: string) => console.log(`${prefix}   ${emoji} ${msg}`),
-    detail: (msg: string) => console.log(`${prefix}      ${msg}`),
-    success: (msg: string) => console.log(`${prefix}   ✅ ${msg}`),
-    fail: (msg: string) => console.log(`${prefix}   ❌ ${msg}`),
+    start: () => lines.push(`${prefix} [${source}] "${shortTitle}"`),
+    step: (emoji: string, msg: string) => lines.push(`${prefix}    ${emoji} ${msg}`),
+    detail: (msg: string) => lines.push(`${prefix}       ${msg}`),
+    success: (msg: string) => lines.push(`${prefix}    ✅ ${msg}`),
+    fail: (msg: string) => lines.push(`${prefix}    ❌ ${msg}`),
+    flush: () => {
+      console.log("\n" + lines.join("\n"));
+    },
   };
 }
 
@@ -462,6 +467,7 @@ async function processRecording(
       const videoUrl = await getZoomRecordingUrl(accessToken, meetingUuid);
       if (!videoUrl) {
         log.fail("Could not get video URL");
+        log.flush();
         recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-url", duration: Date.now() - totalStart });
         return false;
       }
@@ -472,6 +478,7 @@ async function processRecording(
       const testUrl = await getGongRecordingUrl(gongCallId!);
       if (!testUrl) {
         log.fail("Could not get video URL");
+        log.flush();
         recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-url", duration: Date.now() - totalStart });
         return false;
       }
@@ -486,10 +493,7 @@ async function processRecording(
     log.step("✓", `URL ready (${formatDuration(urlElapsed)})`);
 
     // --- GIF Extraction ---
-    // FFmpeg uses HTTP Range requests to seek directly
-    // For Gong: fetch fresh URL per extraction since URLs may not support concurrent access
-    const timestampStrs = timestamps.map(t => `${Math.floor(t/60)}:${(t%60).toString().padStart(2, "0")}`);
-    log.step("🎞️", `Extracting ${timestamps.length} GIFs @ ${timestampStrs.join(", ")}`);
+    log.step("🎞️", `Extracting ${timestamps.length} GIF candidates...`);
 
     const extractStart = Date.now();
 
@@ -497,9 +501,7 @@ async function processRecording(
       timestamps,
       async (timestamp, i) => {
         const outputPath = join(tempDir, `candidate_${i}.gif`);
-        const gifStart = Date.now();
         const maxAttempts = MAX_RETRIES + 1;
-        const timestampStr = `${Math.floor(timestamp/60)}:${(timestamp%60).toString().padStart(2, "0")}`;
 
         // Retry loop for failed extractions
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -507,10 +509,8 @@ async function processRecording(
 
           // For Gong, fetch fresh URL for each extraction (and retry)
           if (gongCallId) {
-            if (DEBUG_FFMPEG) log.detail(`[DEBUG] Fetching fresh Gong URL for GIF ${i + 1}...`);
             const freshUrl = await getGongRecordingUrl(gongCallId);
             if (!freshUrl) {
-              log.detail(`GIF ${i + 1} @ ${timestampStr}: ✗ no URL`);
               return null;
             }
             urlToUse = freshUrl;
@@ -532,18 +532,13 @@ async function processRecording(
           });
 
           if (success) {
-            const gifElapsed = Date.now() - gifStart;
-            const retryNote = attempt > 1 ? ` (retry ${attempt})` : "";
             if (attempt > 1) {
               timingStats.retriesSucceeded++;
             }
-            log.detail(`GIF ${i + 1} @ ${timestampStr}: ✓ ${formatDuration(gifElapsed)}${retryNote}`);
             return outputPath;
           }
         }
 
-        const gifElapsed = Date.now() - gifStart;
-        log.detail(`GIF ${i + 1} @ ${timestampStr}: ✗ failed after ${maxAttempts} attempts (${formatDuration(gifElapsed)})`);
         return null;
       },
       parallelGifs
@@ -556,6 +551,7 @@ async function processRecording(
 
     if (candidatePaths.length === 0) {
       log.fail(`No GIFs extracted (0/${timestamps.length})`);
+      log.flush();
       recordingResults.push({ id: recording.id, title: recording.title, source, status: "no-gifs", duration: Date.now() - totalStart });
       return false;
     }
@@ -595,6 +591,7 @@ async function processRecording(
     const totalElapsed = Date.now() - totalStart;
     timingStats.total.push(totalElapsed);
     log.success(`Done in ${formatDuration(totalElapsed)} (GIF #${bestIndex + 1} selected)`);
+    log.flush();
     recordingResults.push({ id: recording.id, title: recording.title, source, status: "success", duration: totalElapsed });
     return true;
   } finally {
