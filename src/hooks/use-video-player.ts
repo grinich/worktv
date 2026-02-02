@@ -13,16 +13,17 @@ const initialState: PlaybackState = {
   isFullscreen: false,
 };
 
-export function useVideoPlayer(videoRef: RefObject<HTMLVideoElement | null>) {
+// Accepts both video and audio elements since they share the HTMLMediaElement interface
+export function useVideoPlayer(mediaRef: RefObject<HTMLMediaElement | null>) {
   const [state, setState] = useState<PlaybackState>(initialState);
 
   const play = useCallback(() => {
-    videoRef.current?.play();
-  }, [videoRef]);
+    mediaRef.current?.play();
+  }, [mediaRef]);
 
   const pause = useCallback(() => {
-    videoRef.current?.pause();
-  }, [videoRef]);
+    mediaRef.current?.pause();
+  }, [mediaRef]);
 
   const togglePlay = useCallback(() => {
     if (state.isPlaying) {
@@ -34,12 +35,12 @@ export function useVideoPlayer(videoRef: RefObject<HTMLVideoElement | null>) {
 
   const seek = useCallback(
     (time: number) => {
-      if (videoRef.current) {
-        const duration = videoRef.current.duration || 0;
-        videoRef.current.currentTime = Math.max(0, Math.min(time, duration));
+      if (mediaRef.current) {
+        const duration = mediaRef.current.duration || 0;
+        mediaRef.current.currentTime = Math.max(0, Math.min(time, duration));
       }
     },
-    [videoRef]
+    [mediaRef]
   );
 
   const seekRelative = useCallback(
@@ -51,34 +52,34 @@ export function useVideoPlayer(videoRef: RefObject<HTMLVideoElement | null>) {
 
   const setVolume = useCallback(
     (volume: number) => {
-      if (videoRef.current) {
+      if (mediaRef.current) {
         const clampedVolume = Math.max(0, Math.min(1, volume));
-        videoRef.current.volume = clampedVolume;
+        mediaRef.current.volume = clampedVolume;
         setState((prev) => ({ ...prev, volume: clampedVolume }));
       }
     },
-    [videoRef]
+    [mediaRef]
   );
 
   const toggleMute = useCallback(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = !videoRef.current.muted;
+    if (mediaRef.current) {
+      mediaRef.current.muted = !mediaRef.current.muted;
       setState((prev) => ({ ...prev, isMuted: !prev.isMuted }));
     }
-  }, [videoRef]);
+  }, [mediaRef]);
 
   const setPlaybackRate = useCallback(
     (rate: number) => {
-      if (videoRef.current) {
-        videoRef.current.playbackRate = rate;
+      if (mediaRef.current) {
+        mediaRef.current.playbackRate = rate;
         setState((prev) => ({ ...prev, playbackRate: rate }));
       }
     },
-    [videoRef]
+    [mediaRef]
   );
 
   const toggleFullscreen = useCallback(() => {
-    const container = videoRef.current?.parentElement;
+    const container = mediaRef.current?.parentElement;
     if (!container) return;
 
     if (document.fullscreenElement) {
@@ -86,10 +87,10 @@ export function useVideoPlayer(videoRef: RefObject<HTMLVideoElement | null>) {
     } else {
       container.requestFullscreen();
     }
-  }, [videoRef]);
+  }, [mediaRef]);
 
   useEffect(() => {
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
 
     const handlePlay = () => setState((prev) => ({ ...prev, isPlaying: true }));
@@ -144,7 +145,7 @@ export function useVideoPlayer(videoRef: RefObject<HTMLVideoElement | null>) {
       video.removeEventListener("volumechange", handleVolumeChange);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
-  }, [videoRef]);
+  }, [mediaRef]);
 
   return {
     state,

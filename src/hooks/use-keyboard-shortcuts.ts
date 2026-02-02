@@ -9,7 +9,7 @@ interface KeyboardShortcutsOptions {
   onVolumeUp: () => void;
   onVolumeDown: () => void;
   onToggleMute: () => void;
-  onToggleFullscreen: () => void;
+  onToggleFullscreen?: () => void;
   onToggleCaptions?: () => void;
 }
 
@@ -62,8 +62,10 @@ export function useKeyboardShortcuts({
           onToggleMute();
           break;
         case "f":
-          event.preventDefault();
-          onToggleFullscreen();
+          if (onToggleFullscreen) {
+            event.preventDefault();
+            onToggleFullscreen();
+          }
           break;
         case "c":
           if (onToggleCaptions) {

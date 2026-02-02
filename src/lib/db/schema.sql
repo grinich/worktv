@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS recordings (
   video_url TEXT NOT NULL,
   duration INTEGER NOT NULL,
   space TEXT DEFAULT 'Zoom Meetings',
+  source TEXT DEFAULT 'zoom',
+  media_type TEXT DEFAULT 'video',
+  media_url_expires_at TEXT,
   created_at TEXT NOT NULL,
   synced_at TEXT NOT NULL
 );
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_recording ON chat_messages(recording_id);
+CREATE INDEX IF NOT EXISTS idx_recordings_source ON recordings(source);
 
 CREATE TABLE IF NOT EXISTS summaries (
   id TEXT PRIMARY KEY,
@@ -61,3 +65,9 @@ CREATE TABLE IF NOT EXISTS summaries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_summaries_recording ON summaries(recording_id);
+
+-- Migration: Add new columns to existing recordings table
+-- These statements are safe to run multiple times (handled by db init code)
+-- MIGRATION:ADD_COLUMN:recordings:source:TEXT DEFAULT 'zoom'
+-- MIGRATION:ADD_COLUMN:recordings:media_type:TEXT DEFAULT 'video'
+-- MIGRATION:ADD_COLUMN:recordings:media_url_expires_at:TEXT

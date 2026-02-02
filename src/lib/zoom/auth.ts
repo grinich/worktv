@@ -3,7 +3,17 @@ import type { ZoomAccessToken } from "@/types/zoom";
 let cachedToken: ZoomAccessToken | null = null;
 let tokenExpiry: number = 0;
 
-export async function getZoomAccessToken(): Promise<string> {
+export function isZoomConfigured(): boolean {
+  const accountId = process.env.ZOOM_ACCOUNT_ID;
+  const clientId = process.env.ZOOM_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+  return Boolean(accountId && clientId && clientSecret);
+}
+
+export async function getZoomAccessToken(): Promise<string | null> {
+  if (!isZoomConfigured()) {
+    return null;
+  }
   // Return cached token if still valid (with 5-minute buffer)
   if (cachedToken && Date.now() < tokenExpiry - 5 * 60 * 1000) {
     return cachedToken.access_token;
@@ -14,7 +24,7 @@ export async function getZoomAccessToken(): Promise<string> {
   const clientSecret = process.env.ZOOM_CLIENT_SECRET;
 
   if (!accountId || !clientId || !clientSecret) {
-    throw new Error("Missing Zoom credentials in environment variables");
+    return null;
   }
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(

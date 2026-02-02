@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
-import type { Recording, ChatMessage } from "@/types/video";
+import type { Recording } from "@/types/video";
 import { createVttBlobUrl } from "@/types/video";
 import { useVideoPlayer } from "@/hooks/use-video-player";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { VideoPlayer } from "@/components/video/video-player";
+import { AudioPlayer } from "@/components/video/audio-player";
 import { VideoControls } from "@/components/video/video-controls";
 import { TranscriptPanel } from "@/components/video/transcript-panel";
 import { ChatPanel } from "@/components/video/chat-panel";
@@ -29,10 +30,14 @@ type PanelTab = "transcript" | "chat";
 
 export function RecordingPlayer({ recording, videoViews = [], summary }: RecordingPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [currentViewIndex, setCurrentViewIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<PanelTab>("transcript");
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
+
+  const isAudioOnly = recording.mediaType === "audio";
+  const mediaRef = isAudioOnly ? audioRef : videoRef;
 
   const hasChatMessages = (recording.chatMessages?.length ?? 0) > 0;
   const hasTranscript = recording.transcript.length > 0;
@@ -71,7 +76,7 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
     toggleMute,
     setPlaybackRate,
     toggleFullscreen,
-  } = useVideoPlayer(videoRef);
+  } = useVideoPlayer(mediaRef);
 
   // Seek to time and start playing
   const seekAndPlay = useCallback((time: number) => {
@@ -94,8 +99,8 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
     onVolumeUp: handleVolumeUp,
     onVolumeDown: handleVolumeDown,
     onToggleMute: toggleMute,
-    onToggleFullscreen: toggleFullscreen,
-    onToggleCaptions: hasTranscript ? toggleCaptions : undefined,
+    onToggleFullscreen: isAudioOnly ? undefined : toggleFullscreen,
+    onToggleCaptions: hasTranscript && !isAudioOnly ? toggleCaptions : undefined,
   });
 
   // Handle view switching while preserving playback position
@@ -133,20 +138,28 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
         </div>
       )}
 
-      {/* Right column - Video + Controls + Transcript */}
+      {/* Right column - Video/Audio + Controls + Transcript */}
       <div className="flex flex-col gap-4">
-        {/* Video section */}
+        {/* Media section */}
         <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4 light:border-zinc-200 light:bg-white">
-          <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black light:border-zinc-300">
-            <VideoPlayer
-              ref={videoRef}
-              src={currentVideoUrl}
-              poster={recording.posterUrl}
-              captionsUrl={captionsUrl}
-              captionsEnabled={captionsEnabled}
-              isPlaying={state.isPlaying}
-              onClick={togglePlay}
-            />
+          <div className={`relative w-full overflow-hidden rounded-xl border border-white/10 bg-black light:border-zinc-300 ${isAudioOnly ? "aspect-[3/1]" : "aspect-video"}`}>
+            {isAudioOnly ? (
+              <AudioPlayer
+                ref={audioRef}
+                src={currentVideoUrl}
+                onClick={togglePlay}
+              />
+            ) : (
+              <VideoPlayer
+                ref={videoRef}
+                src={currentVideoUrl}
+                poster={recording.posterUrl}
+                captionsUrl={captionsUrl}
+                captionsEnabled={captionsEnabled}
+                isPlaying={state.isPlaying}
+                onClick={togglePlay}
+              />
+            )}
           </div>
 
           <VideoControls
@@ -158,14 +171,14 @@ export function RecordingPlayer({ recording, videoViews = [], summary }: Recordi
             playbackRate={state.playbackRate}
             isFullscreen={state.isFullscreen}
             captionsEnabled={captionsEnabled}
-            hasCaptions={hasTranscript}
+            hasCaptions={hasTranscript && !isAudioOnly}
             onTogglePlay={togglePlay}
             onSeek={seek}
             onVolumeChange={setVolume}
             onToggleMute={toggleMute}
             onPlaybackRateChange={setPlaybackRate}
-            onToggleFullscreen={toggleFullscreen}
-            onToggleCaptions={toggleCaptions}
+            onToggleFullscreen={isAudioOnly ? undefined : toggleFullscreen}
+            onToggleCaptions={isAudioOnly ? undefined : toggleCaptions}
           />
 
           {videoViews.length > 1 && (
