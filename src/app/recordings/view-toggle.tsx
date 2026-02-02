@@ -20,7 +20,7 @@ export function ViewToggle({ currentView }: { currentView: ViewType }) {
       // Grid is the default, so remove view param
       params.delete("view");
     }
-    router.push(`/recordings?${params.toString()}`);
+    router.push(`/?${params.toString()}`);
   }
 
   return (

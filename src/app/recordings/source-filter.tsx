@@ -30,7 +30,7 @@ export function SourceFilter({ currentSource }: SourceFilterProps) {
       }
 
       const queryString = params.toString();
-      router.push(`/recordings${queryString ? `?${queryString}` : ""}`);
+      router.push(`/${queryString ? `?${queryString}` : ""}`);
     },
     [router, searchParams]
   );
