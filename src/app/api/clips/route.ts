@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAllClips, getRecordingById, dbRowToClip } from "@/lib/db";
+import { getAllClipsWithRecordingTitle, dbRowToClip } from "@/lib/db";
 
 export async function GET() {
   try {
-    const clipRows = getAllClips();
-    const clips = clipRows.map((row) => {
-      const recording = getRecordingById(row.recording_id);
-      return {
-        ...dbRowToClip(row),
-        recordingTitle: recording?.title ?? "Unknown Recording",
-      };
-    });
+    const clipRows = getAllClipsWithRecordingTitle();
+    const clips = clipRows.map((row) => ({
+      ...dbRowToClip(row),
+      recordingTitle: row.recording_title,
+    }));
 
     return NextResponse.json(clips);
   } catch (error) {

@@ -5,8 +5,7 @@ import {
   searchRecordingsWithSpeaker,
   getSpeakersByRecordingIds,
   getRecordingsBySource,
-  getAllClips,
-  getRecordingById,
+  getAllClipsWithRecordingTitle,
   dbRowToClip,
 } from "@/lib/db";
 import { isZoomConfigured } from "@/lib/zoom/auth";
@@ -34,14 +33,11 @@ export default async function RecordingsPage({
 
   // If clips view, fetch clips instead of recordings
   if (isClipsView) {
-    const clipRows = getAllClips();
-    const clipsWithRecordings = clipRows.map((row) => {
-      const recording = getRecordingById(row.recording_id);
-      return {
-        ...dbRowToClip(row),
-        recordingTitle: recording?.title ?? "Unknown Recording",
-      };
-    });
+    const clipRows = getAllClipsWithRecordingTitle();
+    const clipsWithRecordings = clipRows.map((row) => ({
+      ...dbRowToClip(row),
+      recordingTitle: row.recording_title,
+    }));
 
     return (
       <div className="flex flex-col gap-4">
