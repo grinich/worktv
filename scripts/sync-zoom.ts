@@ -395,12 +395,13 @@ function upsertRecording(
     videoUrl: string;
     duration: number;
     space: string;
+    source: string;
     createdAt: string;
   }
 ): void {
   db.prepare(
-    `INSERT OR REPLACE INTO recordings (id, title, description, video_url, duration, space, created_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO recordings (id, title, description, video_url, duration, space, source, created_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     recording.id,
     recording.title,
@@ -408,6 +409,7 @@ function upsertRecording(
     recording.videoUrl,
     recording.duration,
     recording.space,
+    recording.source,
     recording.createdAt,
     new Date().toISOString()
   );
@@ -565,8 +567,11 @@ async function processRecording(
     return { synced: false, skipped: true, topic: meeting.topic };
   }
 
+  // Prefix ID with zoom_ to avoid collisions with other sources
+  const recordingId = `zoom_${meeting.uuid}`;
+
   // Skip if recently synced (unless force)
-  if (!force && isRecentlySynced(db, meeting.uuid)) {
+  if (!force && isRecentlySynced(db, recordingId)) {
     return { synced: false, skipped: true, topic: meeting.topic };
   }
 
@@ -587,24 +592,25 @@ async function processRecording(
 
     // Insert/update recording
     upsertRecording(db, {
-      id: meeting.uuid,
+      id: recordingId,
       title: meeting.topic,
       description,
       videoUrl: videoFile.download_url,
       duration: meeting.duration * 60,
       space: "Zoom Meetings",
+      source: "zoom",
       createdAt: meeting.start_time,
     });
 
     // Clear existing segments, speakers, and video files
-    deleteRecordingData(db, meeting.uuid);
+    deleteRecordingData(db, recordingId);
 
     // Save all video views
     const allVideoFiles = findAllVideoFiles(details.recording_files);
     if (allVideoFiles.length > 0) {
       insertVideoFiles(
         db,
-        meeting.uuid,
+        recordingId,
         allVideoFiles.map((f) => ({
           viewType: f.recording_type,
           videoUrl: f.download_url,
@@ -623,8 +629,8 @@ async function processRecording(
       const segments = parseZoomTranscript(transcriptContent);
       const speakers = extractZoomSpeakers(segments);
 
-      insertSegments(db, meeting.uuid, segments);
-      insertSpeakers(db, meeting.uuid, speakers);
+      insertSegments(db, recordingId, segments);
+      insertSpeakers(db, recordingId, speakers);
       transcriptInfo = `${segments.length} segments, ${speakers.length} speakers`;
     }
 
@@ -636,7 +642,7 @@ async function processRecording(
         const chatContent = await fetchChatFile(accessToken, chatFile.download_url);
         const messages = parseChatFile(chatContent, meeting.start_time);
         if (messages.length > 0) {
-          insertChatMessages(db, meeting.uuid, messages);
+          insertChatMessages(db, recordingId, messages);
           chatInfo = `${messages.length} chat messages`;
         }
       } catch (err) {

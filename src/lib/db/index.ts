@@ -21,7 +21,34 @@ export function getDb(): Database.Database {
     // Initialize schema
     const schemaPath = join(process.cwd(), "src", "lib", "db", "schema.sql");
     const schema = readFileSync(schemaPath, "utf-8");
+
+    // Separate main schema from migration comments
+    const migrationRegex =
+      /-- MIGRATION:ADD_COLUMN:(\w+):(\w+):(.+)/g;
+    const migrations: { table: string; column: string; definition: string }[] =
+      [];
+    let match;
+    while ((match = migrationRegex.exec(schema)) !== null) {
+      migrations.push({
+        table: match[1],
+        column: match[2],
+        definition: match[3],
+      });
+    }
+
+    // Run main schema (CREATE TABLE IF NOT EXISTS statements are safe)
     db.exec(schema);
+
+    // Run migrations with error handling (column may already exist)
+    for (const migration of migrations) {
+      try {
+        db.exec(
+          `ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.definition}`
+        );
+      } catch {
+        // Column already exists, ignore
+      }
+    }
   }
   return db;
 }
@@ -33,6 +60,9 @@ export interface RecordingRow {
   video_url: string;
   duration: number;
   space: string;
+  source: string;
+  media_type: string | null;
+  media_url_expires_at: string | null;
   created_at: string;
   synced_at: string;
 }
@@ -84,16 +114,60 @@ export function getAllRecordings(): RecordingRow[] {
     .all() as RecordingRow[];
 }
 
+export function getRecordingsBySource(
+  source: "zoom" | "gong" | "all"
+): RecordingRow[] {
+  const db = getDb();
+  if (source === "all") {
+    return getAllRecordings();
+  }
+  return db
+    .prepare(
+      `SELECT * FROM recordings WHERE duration >= 60 AND source = ? ORDER BY created_at DESC`
+    )
+    .all(source) as RecordingRow[];
+}
+
+export function isMediaUrlExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date();
+}
+
+export function updateMediaUrl(
+  id: string,
+  videoUrl: string,
+  expiresAt: string
+): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE recordings SET video_url = ?, media_url_expires_at = ?, synced_at = ? WHERE id = ?`
+  ).run(videoUrl, expiresAt, new Date().toISOString(), id);
+}
+
 // Escape SQL LIKE wildcards in user input
 function escapeLikeWildcards(str: string): string {
   return str.replace(/[%_\\]/g, "\\$&");
 }
 
-export function searchRecordings(query: string): RecordingRow[] {
+export function searchRecordings(
+  query: string,
+  source?: "zoom" | "gong" | "all"
+): RecordingRow[] {
   const db = getDb();
   const searchTerm = `%${escapeLikeWildcards(query)}%`;
 
   // Search in titles and transcript text
+  if (source && source !== "all") {
+    return db
+      .prepare(
+        `SELECT DISTINCT r.* FROM recordings r
+         LEFT JOIN segments s ON r.id = s.recording_id
+         WHERE r.duration >= 60 AND r.source = ? AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+         ORDER BY r.created_at DESC`
+      )
+      .all(source, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+  }
+
   return db
     .prepare(
       `SELECT DISTINCT r.* FROM recordings r
@@ -184,13 +258,29 @@ export function getAllUniqueSpeakers(): { name: string; color: string; count: nu
 
 export function searchRecordingsWithSpeaker(
   query: string,
-  speakerName: string
+  speakerName: string,
+  source?: "zoom" | "gong" | "all"
 ): RecordingRow[] {
   const db = getDb();
   const searchTerm = `%${escapeLikeWildcards(query)}%`;
+  const sourceFilter = source && source !== "all" ? source : null;
 
   if (query.trim()) {
     // Search with both text query and speaker filter
+    if (sourceFilter) {
+      return db
+        .prepare(
+          `SELECT DISTINCT r.* FROM recordings r
+           INNER JOIN speakers sp ON r.id = sp.recording_id
+           LEFT JOIN segments s ON r.id = s.recording_id
+           WHERE r.duration >= 60
+             AND r.source = ?
+             AND sp.name = ?
+             AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+           ORDER BY r.created_at DESC`
+        )
+        .all(sourceFilter, speakerName, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+    }
     return db
       .prepare(
         `SELECT DISTINCT r.* FROM recordings r
@@ -204,6 +294,16 @@ export function searchRecordingsWithSpeaker(
       .all(speakerName, searchTerm, searchTerm, searchTerm) as RecordingRow[];
   } else {
     // Just filter by speaker
+    if (sourceFilter) {
+      return db
+        .prepare(
+          `SELECT DISTINCT r.* FROM recordings r
+           INNER JOIN speakers sp ON r.id = sp.recording_id
+           WHERE r.duration >= 60 AND r.source = ? AND sp.name = ?
+           ORDER BY r.created_at DESC`
+        )
+        .all(sourceFilter, speakerName) as RecordingRow[];
+    }
     return db
       .prepare(
         `SELECT DISTINCT r.* FROM recordings r
@@ -236,9 +336,11 @@ export function dbRowToRecording(
   speakers: SpeakerRow[],
   accessToken?: string
 ): Recording {
-  const videoUrl = accessToken
-    ? `${row.video_url}?access_token=${accessToken}`
-    : row.video_url;
+  // Only append access token for Zoom recordings (Gong URLs are pre-signed S3 URLs)
+  const videoUrl =
+    accessToken && row.source === "zoom"
+      ? `${row.video_url}?access_token=${accessToken}`
+      : row.video_url;
 
   return {
     id: row.id,
@@ -248,6 +350,8 @@ export function dbRowToRecording(
     posterUrl: undefined,
     duration: row.duration,
     space: row.space,
+    source: row.source || "zoom",
+    mediaType: (row.media_type as "video" | "audio") || "video",
     createdAt: row.created_at,
     speakers: speakers.map((s) => ({
       id: s.id,
@@ -272,12 +376,15 @@ export function upsertRecording(recording: {
   videoUrl: string;
   duration: number;
   space: string;
+  source?: string;
+  mediaType?: string;
+  mediaUrlExpiresAt?: string;
   createdAt: string;
 }): void {
   const db = getDb();
   db.prepare(
-    `INSERT OR REPLACE INTO recordings (id, title, description, video_url, duration, space, created_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO recordings (id, title, description, video_url, duration, space, source, media_type, media_url_expires_at, created_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     recording.id,
     recording.title,
@@ -285,6 +392,9 @@ export function upsertRecording(recording: {
     recording.videoUrl,
     recording.duration,
     recording.space,
+    recording.source ?? "zoom",
+    recording.mediaType ?? "video",
+    recording.mediaUrlExpiresAt ?? null,
     recording.createdAt,
     new Date().toISOString()
   );

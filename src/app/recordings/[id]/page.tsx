@@ -8,6 +8,7 @@ import {
   getVideoFilesByRecordingId,
   getChatMessagesByRecordingId,
   getSummaryByRecordingId,
+  isMediaUrlExpired,
   dbRowToRecording,
   type RecordingRow,
 } from "@/lib/db";
@@ -61,18 +62,19 @@ export default async function RecordingPage({
     }
   }
 
-  // Get fresh access token for video playback (optional - videos work without it in some cases)
+  // Get fresh access token for video playback (returns null if Zoom not configured)
   let accessToken: string | undefined;
-  const hasZoomCredentials = process.env.ZOOM_ACCOUNT_ID && process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET;
-  if (hasZoomCredentials) {
-    try {
-      accessToken = await getZoomAccessToken();
-    } catch (error) {
-      console.warn("Failed to get Zoom access token:", error);
-    }
+  try {
+    accessToken = (await getZoomAccessToken()) ?? undefined;
+  } catch (error) {
+    console.warn("Failed to get Zoom access token:", error);
   }
 
   const recording = dbRowToRecording(row, segments, speakers, accessToken);
+
+  // Check if Gong media URL has expired
+  const mediaExpired =
+    row.source === "gong" && isMediaUrlExpired(row.media_url_expires_at);
 
   // Transform video files with labels and access token
   const videoViews = videoFiles.map((vf) => ({
@@ -97,6 +99,7 @@ export default async function RecordingPage({
       relatedRecordings={relatedRecordings}
       videoViews={videoViews}
       summary={summary}
+      mediaExpired={mediaExpired}
     />
   );
 }
@@ -116,6 +119,7 @@ function RecordingPageContent({
   relatedRecordings,
   videoViews,
   summary,
+  mediaExpired = false,
 }: {
   recording: {
     id: string;
@@ -125,6 +129,8 @@ function RecordingPageContent({
     posterUrl?: string;
     duration: number;
     space: string;
+    source?: string;
+    mediaType?: "video" | "audio";
     createdAt: string;
     speakers: { id: string; name: string; color: string }[];
     transcript: {
@@ -144,9 +150,19 @@ function RecordingPageContent({
   relatedRecordings: RecordingRow[];
   videoViews: { viewType: string; label: string; videoUrl: string }[];
   summary: AISummary | null;
+  mediaExpired?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-6">
+      {mediaExpired && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 light:border-amber-300 light:bg-amber-50 light:text-amber-800">
+          <span className="font-medium">Media URL expired.</span>{" "}
+          <span className="text-amber-300 light:text-amber-600">
+            Run <code className="rounded bg-amber-500/20 px-1 py-0.5 text-xs light:bg-amber-200">npm run sync:gong</code> to refresh the recording URL.
+          </span>
+        </div>
+      )}
+
       <header className="rounded-2xl border border-white/10 bg-zinc-900/50 p-6 light:border-zinc-200 light:bg-white">
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold">

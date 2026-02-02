@@ -20,7 +20,7 @@ interface VideoControlsProps {
   onVolumeChange: (volume: number) => void;
   onToggleMute: () => void;
   onPlaybackRateChange: (rate: number) => void;
-  onToggleFullscreen: () => void;
+  onToggleFullscreen?: () => void;
   onToggleCaptions?: () => void;
 }
 
