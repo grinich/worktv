@@ -84,8 +84,9 @@ async function testConcurrentAccess(url: string, concurrency: number): Promise<v
 
   console.log(`\n   Summary: ${successful}/${concurrency} successful`);
 
-  if (results[0]?.acceptRanges) {
-    console.log(`   Accept-Ranges header: ${results[0].acceptRanges}`);
+  const firstSuccess = results.find(r => r.success);
+  if (firstSuccess && firstSuccess.success && firstSuccess.acceptRanges) {
+    console.log(`   Accept-Ranges header: ${firstSuccess.acceptRanges}`);
   }
 }
 

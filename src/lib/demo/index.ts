@@ -115,7 +115,8 @@ function anonymizeEmail(realEmail: string): string {
   }
 
   const hash = hashContent(realEmail);
-  const fakeName = anonymizeName(realEmail.split("@")[0]);
+  const localPart = realEmail.includes("@") ? realEmail.split("@")[0] : realEmail;
+  const fakeName = anonymizeName(localPart);
   const fakeEmail = `${fakeName.toLowerCase().replace(" ", ".")}@example.com`;
 
   emailCache.set(realEmail, fakeEmail);
@@ -167,6 +168,12 @@ Output exactly ${uncached.length} fake titles, one per line, in the same order. 
   const fakeContent =
     response.content[0].type === "text" ? response.content[0].text : "";
   const fakeTitles = fakeContent.split("\n").filter((t) => t.trim());
+
+  if (fakeTitles.length !== uncached.length) {
+    console.warn(
+      `Demo: Expected ${uncached.length} titles, got ${fakeTitles.length}`
+    );
+  }
 
   for (let i = 0; i < uncached.length; i++) {
     const original = uncached[i];
@@ -366,6 +373,31 @@ Output in this exact JSON format:
   return summary;
 }
 
+// Common false positives for name detection (places, companies, etc.)
+const NAME_BLOCKLIST = new Set([
+  "New York",
+  "Los Angeles",
+  "San Francisco",
+  "San Diego",
+  "Las Vegas",
+  "New Jersey",
+  "New Zealand",
+  "United States",
+  "United Kingdom",
+  "South Africa",
+  "North America",
+  "South America",
+  "Microsoft Office",
+  "Google Chrome",
+  "Visual Studio",
+  "Open Source",
+  "Machine Learning",
+  "Artificial Intelligence",
+  "Next Steps",
+  "Key Points",
+  "Action Items",
+]);
+
 /**
  * Anonymize chat messages
  */
@@ -383,9 +415,8 @@ export function anonymizeChatMessages(
     // Simple text anonymization - replace potential names and emails
     message: msg.message
       .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "user@example.com")
-      .replace(
-        /\b[A-Z][a-z]+ [A-Z][a-z]+\b/g,
-        (match) => anonymizeName(match)
+      .replace(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/g, (match) =>
+        NAME_BLOCKLIST.has(match) ? match : anonymizeName(match)
       ),
   }));
 }
