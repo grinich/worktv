@@ -19,7 +19,7 @@ A powerful private video library for your team's meeting recordings. Sync record
   </tr>
   <tr>
     <td align="center"><img src="public/screenshots/calendar-view.png" alt="Calendar View" width="400" /><br /><em>Calendar view</em></td>
-    <td></td>
+    <td align="center"><img src="public/screenshots/list-view.png" alt="List View" width="400" /><br /><em>List view</em></td>
   </tr>
 </table>
 
