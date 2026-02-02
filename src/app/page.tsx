@@ -15,6 +15,12 @@ import {
 } from "@/lib/db";
 import { isZoomConfigured } from "@/lib/zoom/auth";
 import { isGongConfigured } from "@/lib/gong/auth";
+import {
+  isDemoMode,
+  anonymizeRecordingTitles,
+  anonymizeSpeakers,
+  anonymizeClips,
+} from "@/lib/demo";
 import { SearchInput } from "./recordings/search-input";
 import { ViewToggle } from "./recordings/view-toggle";
 import { CalendarView } from "./recordings/calendar-view";
@@ -32,9 +38,10 @@ import type { AISummary } from "@/types/video";
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; speaker?: string | string[]; participant?: string; source?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; speaker?: string | string[]; participant?: string; source?: string; demo?: string }>;
 }) {
-  const { q, view, speaker, participant, source } = await searchParams;
+  const { q, view, speaker, participant, source, demo } = await searchParams;
+  const demoMode = isDemoMode({ demo });
 
   // Parse speakers (can be single string or array)
   const speakers: string[] = Array.isArray(speaker) ? speaker : speaker ? [speaker] : [];
@@ -51,10 +58,29 @@ export default async function HomePage({
   // If clips view, fetch clips instead of recordings
   if (isClipsView) {
     const clipRows = getAllClipsWithRecordingTitle();
-    const clipsWithRecordings = clipRows.map((row) => ({
+    let clipsWithRecordings = clipRows.map((row) => ({
       ...dbRowToClip(row),
       recordingTitle: row.recording_title,
     }));
+
+    // Anonymize clips data in demo mode
+    if (demoMode) {
+      const anonymizedClips = await anonymizeClips(
+        clipsWithRecordings.map((c) => ({
+          id: c.id,
+          title: c.title,
+          recording_id: c.recordingId,
+        }))
+      );
+      const titleMap = await anonymizeRecordingTitles(
+        clipsWithRecordings.map((c) => c.recordingTitle)
+      );
+      clipsWithRecordings = clipsWithRecordings.map((clip, i) => ({
+        ...clip,
+        title: anonymizedClips[i].title,
+        recordingTitle: titleMap.get(clip.recordingTitle) || clip.recordingTitle,
+      }));
+    }
 
     return (
       <div className="flex flex-col gap-4">
@@ -116,8 +142,15 @@ export default async function HomePage({
     ? getSummariesByRecordingIds(recordings.map((r) => r.id))
     : {};
 
+  // Anonymize data in demo mode
+  let titleMap: Map<string, string> | null = null;
+  if (demoMode && recordings.length > 0) {
+    const titles = recordings.map((r) => r.custom_title || r.title);
+    titleMap = await anonymizeRecordingTitles(titles);
+  }
+
   const recordingsWithMeta = recordings.map((recording) => {
-    const speakers = speakersByRecording[recording.id] ?? [];
+    let speakers = speakersByRecording[recording.id] ?? [];
     const summaryRow = summariesByRecording[recording.id];
     let summaryBrief: string | null = null;
     if (summaryRow) {
@@ -128,8 +161,40 @@ export default async function HomePage({
         // Invalid JSON, ignore
       }
     }
+
+    // Apply demo mode anonymization
+    let title = recording.title;
+    let customTitle = recording.custom_title;
+    let description = recording.description;
+
+    if (demoMode && titleMap) {
+      const originalTitle = recording.custom_title || recording.title;
+      const fakeTitle = titleMap.get(originalTitle);
+      if (fakeTitle) {
+        if (recording.custom_title) {
+          customTitle = fakeTitle;
+        } else {
+          title = fakeTitle;
+        }
+      }
+      // Anonymize description if present
+      if (description) {
+        description = "Discussion about project updates and team coordination.";
+      }
+      // Anonymize speaker names while preserving other fields
+      const anonymized = anonymizeSpeakers(speakers.map(s => ({ id: s.id, name: s.name, color: s.color })));
+      speakers = speakers.map((s, i) => ({ ...s, name: anonymized[i].name }));
+      // Anonymize summary brief
+      if (summaryBrief) {
+        summaryBrief = "Team discussed project milestones and upcoming deliverables.";
+      }
+    }
+
     return {
       ...recording,
+      title,
+      custom_title: customTitle,
+      description,
       speakers,
       hasTranscript: speakers.length > 0,
       posterUrl: recording.poster_url,
@@ -223,6 +288,7 @@ export default async function HomePage({
               initialCursor={paginatedResult.nextCursor}
               source={sourceFilter}
               viewMode="grid"
+              demoMode={demoMode}
             />
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -239,6 +305,7 @@ export default async function HomePage({
                   posterUrl={recording.posterUrl}
                   previewGifUrl={recording.previewGifUrl}
                   summaryBrief={recording.summaryBrief}
+                  demoMode={demoMode}
                 />
               ))}
             </div>
@@ -250,6 +317,7 @@ export default async function HomePage({
             initialCursor={paginatedResult.nextCursor}
             source={sourceFilter}
             viewMode="list"
+            demoMode={demoMode}
           />
         ) : (
           <section className="rounded-2xl border border-white/10 bg-zinc-900/50 p-2 light:border-zinc-200 light:bg-white">
@@ -257,7 +325,7 @@ export default async function HomePage({
               {recordingsWithMeta.map((recording) => (
                 <Link
                   key={recording.id}
-                  href={`/recordings/${encodeURIComponent(recording.id)}`}
+                  href={`/recordings/${encodeURIComponent(recording.id)}${demoMode ? "?demo=true" : ""}`}
                   className="group flex gap-4 rounded-xl p-4 transition hover:bg-white/5 light:hover:bg-zinc-50"
                 >
                   <RecordingPreview

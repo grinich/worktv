@@ -19,6 +19,16 @@ import {
 } from "@/lib/db";
 import { getRecording } from "@/data/mock-recordings";
 import { getZoomAccessToken } from "@/lib/zoom/auth";
+import {
+  isDemoMode,
+  anonymizeRecordingTitles,
+  anonymizeSpeakers,
+  anonymizeParticipants,
+  anonymizeTranscriptSegments,
+  anonymizeSummary,
+  anonymizeChatMessages,
+  anonymizeClips,
+} from "@/lib/demo";
 import { RecordingPlayer } from "./recording-player";
 import { LocalDateTime } from "@/components/local-datetime";
 import { NavTitle } from "@/components/nav-title";
@@ -38,11 +48,12 @@ export default async function RecordingPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ clip?: string }>;
+  searchParams: Promise<{ clip?: string; demo?: string }>;
 }) {
   const { id: rawId } = await params;
-  const { clip: clipId } = await searchParams;
+  const { clip: clipId, demo } = await searchParams;
   const id = decodeURIComponent(rawId);
+  const demoMode = isDemoMode({ demo });
 
   // Try mock data first (for demo IDs)
   const mockRecording = getRecording(id);
@@ -92,7 +103,7 @@ export default async function RecordingPage({
     console.warn("Failed to get Zoom access token:", error);
   }
 
-  const recording = dbRowToRecording(row, segments, speakers, accessToken);
+  let recording = dbRowToRecording(row, segments, speakers, accessToken);
 
   // Check if Gong media URL has expired
   const mediaExpired =
@@ -108,23 +119,107 @@ export default async function RecordingPage({
   }));
 
   // Transform chat messages
-  const chatMessagesFormatted = chatMessages.map((cm) => ({
+  let chatMessagesFormatted = chatMessages.map((cm) => ({
     id: cm.id,
     timestamp: cm.timestamp,
     sender: cm.sender,
     message: cm.message,
   }));
 
+  // Apply demo mode anonymization
+  let anonymizedParticipants = participants;
+  let anonymizedSummary = summary;
+  let anonymizedClips = clips;
+  let anonymizedRelatedRecordings = relatedRecordings;
+
+  if (demoMode) {
+    // Anonymize title
+    const titleMap = await anonymizeRecordingTitles([recording.customTitle || recording.title]);
+    const fakeTitle = titleMap.get(recording.customTitle || recording.title);
+
+    // Anonymize transcript segments
+    const anonymizedSegments = await anonymizeTranscriptSegments(
+      recording.transcript.map((seg) => ({
+        id: seg.id,
+        speaker: seg.speaker,
+        text: seg.text,
+        start_time: seg.startTime,
+        end_time: seg.endTime,
+      }))
+    );
+
+    // Anonymize speakers
+    const anonymizedSpeakers = anonymizeSpeakers(recording.speakers);
+
+    // Anonymize participants (preserve extra fields from ParticipantRow)
+    const anonymizedParts = anonymizeParticipants(participants.map(p => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      user_id: p.user_id,
+    })));
+    anonymizedParticipants = participants.map((p, i) => ({
+      ...p,
+      name: anonymizedParts[i].name,
+      email: anonymizedParts[i].email,
+      user_id: anonymizedParts[i].user_id,
+    }));
+
+    // Anonymize summary
+    if (summary) {
+      anonymizedSummary = await anonymizeSummary(summary);
+    }
+
+    // Anonymize chat messages
+    chatMessagesFormatted = anonymizeChatMessages(chatMessagesFormatted);
+
+    // Anonymize clips
+    anonymizedClips = await anonymizeClips(
+      clips.map((c) => ({ id: c.id, title: c.title, recording_id: c.recordingId }))
+    ).then((anonymized) =>
+      clips.map((clip, i) => ({ ...clip, title: anonymized[i].title }))
+    );
+
+    // Anonymize related recordings
+    if (relatedRecordings.length > 0) {
+      const relatedTitleMap = await anonymizeRecordingTitles(
+        relatedRecordings.map((r) => r.custom_title || r.title)
+      );
+      anonymizedRelatedRecordings = relatedRecordings.map((r) => ({
+        ...r,
+        title: relatedTitleMap.get(r.custom_title || r.title) || r.title,
+        custom_title: r.custom_title ? relatedTitleMap.get(r.custom_title) || r.custom_title : null,
+      }));
+    }
+
+    // Update recording with anonymized data
+    recording = {
+      ...recording,
+      title: fakeTitle || recording.title,
+      customTitle: recording.customTitle ? fakeTitle || recording.customTitle : undefined,
+      description: recording.description ? "Discussion about project updates and team coordination." : undefined,
+      speakers: anonymizedSpeakers,
+      transcript: anonymizedSegments.map((seg) => ({
+        id: seg.id,
+        speaker: seg.speaker,
+        text: seg.text,
+        startTime: seg.start_time,
+        endTime: seg.end_time,
+      })),
+    };
+  }
+
   return (
     <RecordingPageContent
       recording={{ ...recording, chatMessages: chatMessagesFormatted }}
-      relatedRecordings={relatedRecordings}
+      relatedRecordings={anonymizedRelatedRecordings}
       videoViews={videoViews}
-      summary={summary}
+      summary={anonymizedSummary}
       mediaExpired={mediaExpired}
       activeClip={activeClip}
-      clips={clips}
-      participants={participants}
+      clips={anonymizedClips}
+      participants={anonymizedParticipants}
+      demoMode={demoMode}
     />
   );
 }
@@ -148,6 +243,7 @@ function RecordingPageContent({
   activeClip,
   clips,
   participants,
+  demoMode = false,
 }: {
   recording: {
     id: string;
@@ -183,6 +279,7 @@ function RecordingPageContent({
   activeClip: Clip | null;
   clips: Clip[];
   participants: ParticipantRow[];
+  demoMode?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -237,7 +334,7 @@ function RecordingPageContent({
             {relatedRecordings.map((related) => (
               <Link
                 key={related.id}
-                href={`/recordings/${encodeURIComponent(related.id)}`}
+                href={`/recordings/${encodeURIComponent(related.id)}${demoMode ? "?demo=true" : ""}`}
                 className="flex items-center justify-between py-2 text-sm transition hover:text-zinc-100 light:hover:text-zinc-900"
               >
                 <span className="text-zinc-300 light:text-zinc-600">

@@ -18,6 +18,7 @@ interface RecordingGridCardProps {
   posterUrl: string | null;
   previewGifUrl: string | null;
   summaryBrief: string | null;
+  demoMode?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -42,12 +43,13 @@ export function RecordingGridCard({
   posterUrl,
   previewGifUrl,
   summaryBrief,
+  demoMode = false,
 }: RecordingGridCardProps) {
   const displayTitle = customTitle ?? title;
 
   return (
     <Link
-      href={`/recordings/${encodeURIComponent(id)}`}
+      href={`/recordings/${encodeURIComponent(id)}${demoMode ? "?demo=true" : ""}`}
       className="group flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-900/50 transition hover:border-white/20 hover:bg-zinc-800/50 light:border-zinc-200 light:bg-white light:hover:border-zinc-300 light:hover:bg-zinc-50"
     >
       {/* Thumbnail */}

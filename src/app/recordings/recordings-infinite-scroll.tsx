@@ -33,6 +33,7 @@ interface RecordingsInfiniteScrollProps {
   initialCursor: string | null;
   source: "zoom" | "gong" | "all";
   viewMode?: "list" | "grid";
+  demoMode?: boolean;
 }
 
 export function RecordingsInfiniteScroll({
@@ -41,6 +42,7 @@ export function RecordingsInfiniteScroll({
   initialCursor,
   source,
   viewMode = "list",
+  demoMode = false,
 }: RecordingsInfiniteScrollProps) {
   const [recordings, setRecordings] = useState(initialRecordings);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -69,6 +71,9 @@ export function RecordingsInfiniteScroll({
       if (viewMode === "grid") {
         params.set("includeSummaries", "true");
       }
+      if (demoMode) {
+        params.set("demo", "true");
+      }
       const response = await fetch(`/api/recordings/paginated?${params}`);
       const data = await response.json();
 
@@ -80,7 +85,7 @@ export function RecordingsInfiniteScroll({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, hasMore, cursor, source, viewMode]);
+  }, [isLoading, hasMore, cursor, source, viewMode, demoMode]);
 
   // Keep loadMore ref updated
   useEffect(() => {
@@ -121,6 +126,7 @@ export function RecordingsInfiniteScroll({
               posterUrl={recording.posterUrl}
               previewGifUrl={recording.previewGifUrl}
               summaryBrief={recording.summaryBrief ?? null}
+              demoMode={demoMode}
             />
           ))}
         </div>
@@ -148,7 +154,7 @@ export function RecordingsInfiniteScroll({
         {recordings.map((recording) => (
           <Link
             key={recording.id}
-            href={`/recordings/${encodeURIComponent(recording.id)}`}
+            href={`/recordings/${encodeURIComponent(recording.id)}${demoMode ? "?demo=true" : ""}`}
             className="group flex gap-4 rounded-xl p-4 transition hover:bg-white/5 light:hover:bg-zinc-50"
           >
             <RecordingPreview
