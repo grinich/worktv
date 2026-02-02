@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react";
 import { formatTime } from "@/types/video";
+import { highlightText } from "@/lib/highlight";
 
 interface TranscriptSegmentProps {
   startTime: number;
@@ -12,23 +13,6 @@ interface TranscriptSegmentProps {
   onClick: () => void;
   searchQuery?: string;
   isSearchMatch?: boolean;
-}
-
-function highlightText(text: string, query: string): React.ReactNode {
-  if (!query.trim()) return text;
-
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  const parts = text.split(regex);
-
-  return parts.map((part, i) =>
-    regex.test(part) ? (
-      <mark key={i} className="bg-yellow-400/80 text-zinc-900 rounded px-0.5">
-        {part}
-      </mark>
-    ) : (
-      part
-    )
-  );
 }
 
 export const TranscriptSegment = forwardRef<
