@@ -13,16 +13,7 @@ import { ViewToggle } from "./view-toggle";
 import { CalendarView } from "./calendar-view";
 import { SourceFilter } from "./source-filter";
 import { LocalDateTime } from "@/components/local-datetime";
-
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  if (mins >= 60) {
-    const hours = Math.floor(mins / 60);
-    const remainingMins = mins % 60;
-    return `${hours}h ${remainingMins}m`;
-  }
-  return `${mins}m`;
-}
+import { RecordingPreview } from "./recording-preview";
 
 export default async function RecordingsPage({
   searchParams,
@@ -64,6 +55,8 @@ export default async function RecordingsPage({
       ...recording,
       speakers,
       hasTranscript: speakers.length > 0,
+      posterUrl: recording.poster_url,
+      previewGifUrl: recording.preview_gif_url,
     };
   });
 
@@ -131,9 +124,15 @@ export default async function RecordingsPage({
               <Link
                 key={recording.id}
                 href={`/recordings/${encodeURIComponent(recording.id)}`}
-                className="group grid gap-2 rounded-xl p-4 transition hover:bg-white/5 md:grid-cols-[1fr_auto] light:hover:bg-zinc-50"
+                className="group flex gap-4 rounded-xl p-4 transition hover:bg-white/5 light:hover:bg-zinc-50"
               >
-                <div className="min-w-0">
+                <RecordingPreview
+                  posterUrl={recording.posterUrl}
+                  previewGifUrl={recording.previewGifUrl}
+                  title={recording.title}
+                  duration={recording.duration}
+                />
+                <div className="flex min-w-0 flex-1 flex-col justify-center">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-semibold text-zinc-50 light:text-zinc-900">
                       {recording.title}
@@ -153,18 +152,17 @@ export default async function RecordingsPage({
                       {recording.description}
                     </div>
                   )}
-                  <div className="mt-1 text-xs text-zinc-500">
-                    {formatDuration(recording.duration)}
+                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
                     {recording.speakers.length > 0 && (
-                      <span>
-                        {" · "}
-                        {recording.speakers.map((s) => s.name).join(", ")}
-                      </span>
+                      <>
+                        <span>
+                          {recording.speakers.map((s) => s.name).join(", ")}
+                        </span>
+                        <span className="text-zinc-600">·</span>
+                      </>
                     )}
+                    <LocalDateTime iso={recording.created_at} />
                   </div>
-                </div>
-                <div className="flex items-center text-xs text-zinc-500">
-                  <LocalDateTime iso={recording.created_at} />
                 </div>
               </Link>
             ))}

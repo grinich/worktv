@@ -7,6 +7,24 @@ const DB_PATH = join(process.cwd(), "data", "recordings.db");
 
 let db: Database.Database | null = null;
 
+function runMigrations(database: Database.Database): void {
+  // Get existing columns in recordings table
+  const columns = database
+    .prepare("PRAGMA table_info(recordings)")
+    .all() as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  // Add poster_url column if it doesn't exist
+  if (!columnNames.has("poster_url")) {
+    database.exec("ALTER TABLE recordings ADD COLUMN poster_url TEXT");
+  }
+
+  // Add preview_gif_url column if it doesn't exist
+  if (!columnNames.has("preview_gif_url")) {
+    database.exec("ALTER TABLE recordings ADD COLUMN preview_gif_url TEXT");
+  }
+}
+
 export function getDb(): Database.Database {
   if (!db) {
     const dataDir = join(process.cwd(), "data");
@@ -49,6 +67,9 @@ export function getDb(): Database.Database {
         // Column already exists, ignore
       }
     }
+
+    // Run additional migrations for preview GIFs
+    runMigrations(db);
   }
   return db;
 }
@@ -65,6 +86,8 @@ export interface RecordingRow {
   media_url_expires_at: string | null;
   created_at: string;
   synced_at: string;
+  poster_url: string | null;
+  preview_gif_url: string | null;
 }
 
 export interface SegmentRow {
