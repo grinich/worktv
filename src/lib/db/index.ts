@@ -600,7 +600,7 @@ export function insertParticipants(
 ): void {
   const db = getDb();
   const stmt = db.prepare(
-    `INSERT INTO participants (id, recording_id, name, email, user_id, join_time, leave_time, duration)
+    `INSERT OR REPLACE INTO participants (id, recording_id, name, email, user_id, join_time, leave_time, duration)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
