@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import {
-  searchRecordings,
+  searchRecordingsWithContext,
   searchRecordingsWithSpeaker,
   getSpeakersByRecordingIds,
   getRecordingsBySource,
   getAllClipsWithRecordingTitle,
   dbRowToClip,
+  type SearchResultRow,
 } from "@/lib/db";
 import { isZoomConfigured } from "@/lib/zoom/auth";
 import { isGongConfigured } from "@/lib/gong/auth";
@@ -17,6 +18,8 @@ import { SourceFilter } from "./source-filter";
 import { ClipsListView } from "./clips-list-view";
 import { LocalDateTime } from "@/components/local-datetime";
 import { RecordingPreview } from "./recording-preview";
+import { NavTitle } from "@/components/nav-title";
+import { SearchMatchDisplay } from "./search-match-display";
 
 export default async function RecordingsPage({
   searchParams,
@@ -52,13 +55,16 @@ export default async function RecordingsPage({
   }
 
   // Determine which query to run based on filters
-  let recordings;
+  let recordings: SearchResultRow[];
   if (speaker) {
-    recordings = searchRecordingsWithSpeaker(q ?? "", speaker, sourceFilter);
+    // Speaker search doesn't have context yet, cast to SearchResultRow
+    const results = searchRecordingsWithSpeaker(q ?? "", speaker, sourceFilter);
+    recordings = results.map((r) => ({ ...r, match_type: "speaker" as const, match_text: null, match_time: null }));
   } else if (q) {
-    recordings = searchRecordings(q, sourceFilter);
+    recordings = searchRecordingsWithContext(q, sourceFilter);
   } else {
-    recordings = getRecordingsBySource(sourceFilter);
+    const results = getRecordingsBySource(sourceFilter);
+    recordings = results.map((r) => ({ ...r, match_type: "title" as const, match_text: null, match_time: null }));
   }
 
   // Check which integrations are configured
@@ -153,13 +159,13 @@ export default async function RecordingsPage({
                 <RecordingPreview
                   posterUrl={recording.posterUrl}
                   previewGifUrl={recording.previewGifUrl}
-                  title={recording.title}
+                  title={recording.custom_title ?? recording.title}
                   duration={recording.duration}
                 />
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-semibold text-zinc-50 light:text-zinc-900">
-                      {recording.title}
+                      {recording.custom_title ?? recording.title}
                     </span>
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -175,6 +181,14 @@ export default async function RecordingsPage({
                     <div className="mt-0.5 line-clamp-1 text-xs text-zinc-400 light:text-zinc-500">
                       {recording.description}
                     </div>
+                  )}
+                  {q && recording.match_text && (
+                    <SearchMatchDisplay
+                      matchType={recording.match_type}
+                      matchText={recording.match_text}
+                      matchTime={recording.match_time}
+                      query={q}
+                    />
                   )}
                   <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
                     {recording.speakers.length > 0 && (

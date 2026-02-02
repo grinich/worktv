@@ -24,8 +24,9 @@ export async function generateMetadata({
   const recording = getRecordingById(clipRow.recording_id);
   const clip = dbRowToClip(clipRow);
   const duration = formatDuration(clip.endTime - clip.startTime);
-  const title = clip.title || `Clip from ${recording?.title || "Recording"}`;
-  const description = `${duration} clip from "${recording?.title || "Recording"}"`;
+  const recordingTitle = recording?.custom_title ?? recording?.title ?? "Recording";
+  const title = clip.title || `Clip from ${recordingTitle}`;
+  const description = `${duration} clip from "${recordingTitle}"`;
 
   return {
     title,

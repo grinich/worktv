@@ -28,6 +28,7 @@ export interface Speaker {
 export interface Recording {
   id: string;
   title: string;
+  customTitle?: string;
   description?: string;
   videoUrl: string;
   posterUrl?: string;

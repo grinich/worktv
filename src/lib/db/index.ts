@@ -77,6 +77,7 @@ export function getDb(): Database.Database {
 export interface RecordingRow {
   id: string;
   title: string;
+  custom_title: string | null;
   description: string | null;
   video_url: string;
   duration: number;
@@ -176,6 +177,17 @@ export function updateMediaUrl(
   ).run(videoUrl, expiresAt, new Date().toISOString(), id);
 }
 
+export function updateRecordingCustomTitle(
+  id: string,
+  customTitle: string | null
+): void {
+  const db = getDb();
+  db.prepare(`UPDATE recordings SET custom_title = ? WHERE id = ?`).run(
+    customTitle,
+    id
+  );
+}
+
 // Escape SQL LIKE wildcards in user input
 function escapeLikeWildcards(str: string): string {
   return str.replace(/[%_\\]/g, "\\$&");
@@ -188,26 +200,77 @@ export function searchRecordings(
   const db = getDb();
   const searchTerm = `%${escapeLikeWildcards(query)}%`;
 
-  // Search in titles and transcript text
+  // Search in titles (including custom titles) and transcript text
   if (source && source !== "all") {
     return db
       .prepare(
         `SELECT DISTINCT r.* FROM recordings r
          LEFT JOIN segments s ON r.id = s.recording_id
-         WHERE r.duration >= 60 AND r.source = ? AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+         WHERE r.duration >= 60 AND r.source = ? AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
          ORDER BY r.created_at DESC`
       )
-      .all(source, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+      .all(source, searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
   }
 
   return db
     .prepare(
       `SELECT DISTINCT r.* FROM recordings r
        LEFT JOIN segments s ON r.id = s.recording_id
-       WHERE r.duration >= 60 AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+       WHERE r.duration >= 60 AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
        ORDER BY r.created_at DESC`
     )
-    .all(searchTerm, searchTerm, searchTerm) as RecordingRow[];
+    .all(searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+}
+
+export interface SearchResultRow extends RecordingRow {
+  match_type: "title" | "custom_title" | "transcript" | "speaker";
+  match_text: string | null;
+  match_time: number | null;
+}
+
+export function searchRecordingsWithContext(
+  query: string,
+  source?: "zoom" | "gong" | "all"
+): SearchResultRow[] {
+  const db = getDb();
+  const searchTerm = `%${escapeLikeWildcards(query)}%`;
+  const sourceFilter = source && source !== "all" ? `AND r.source = '${source}'` : "";
+
+  // Query that determines match type and includes context
+  const sql = `
+    SELECT DISTINCT r.*,
+      CASE
+        WHEN r.custom_title LIKE ? ESCAPE '\\' THEN 'custom_title'
+        WHEN r.title LIKE ? ESCAPE '\\' THEN 'title'
+        WHEN EXISTS (SELECT 1 FROM segments WHERE recording_id = r.id AND speaker LIKE ? ESCAPE '\\') THEN 'speaker'
+        ELSE 'transcript'
+      END as match_type,
+      CASE
+        WHEN r.custom_title LIKE ? ESCAPE '\\' THEN r.custom_title
+        WHEN r.title LIKE ? ESCAPE '\\' THEN r.title
+        WHEN EXISTS (SELECT 1 FROM segments WHERE recording_id = r.id AND speaker LIKE ? ESCAPE '\\')
+          THEN (SELECT speaker FROM segments WHERE recording_id = r.id AND speaker LIKE ? ESCAPE '\\' LIMIT 1)
+        ELSE (SELECT text FROM segments WHERE recording_id = r.id AND text LIKE ? ESCAPE '\\' LIMIT 1)
+      END as match_text,
+      CASE
+        WHEN r.custom_title LIKE ? ESCAPE '\\' OR r.title LIKE ? ESCAPE '\\' THEN NULL
+        ELSE (SELECT start_time FROM segments WHERE recording_id = r.id AND (text LIKE ? ESCAPE '\\' OR speaker LIKE ? ESCAPE '\\') LIMIT 1)
+      END as match_time
+    FROM recordings r
+    LEFT JOIN segments s ON r.id = s.recording_id
+    WHERE r.duration >= 60 ${sourceFilter}
+      AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+    ORDER BY r.created_at DESC
+  `;
+
+  return db
+    .prepare(sql)
+    .all(
+      searchTerm, searchTerm, searchTerm, // match_type CASE
+      searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, // match_text CASE
+      searchTerm, searchTerm, searchTerm, searchTerm, // match_time CASE
+      searchTerm, searchTerm, searchTerm, searchTerm // WHERE clause
+    ) as SearchResultRow[];
 }
 
 export function getRecordingById(id: string): RecordingRow | undefined {
@@ -308,10 +371,10 @@ export function searchRecordingsWithSpeaker(
            WHERE r.duration >= 60
              AND r.source = ?
              AND sp.name = ?
-             AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+             AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
            ORDER BY r.created_at DESC`
         )
-        .all(sourceFilter, speakerName, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+        .all(sourceFilter, speakerName, searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
     }
     return db
       .prepare(
@@ -320,10 +383,10 @@ export function searchRecordingsWithSpeaker(
          LEFT JOIN segments s ON r.id = s.recording_id
          WHERE r.duration >= 60
            AND sp.name = ?
-           AND (r.title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
+           AND (r.title LIKE ? ESCAPE '\\' OR r.custom_title LIKE ? ESCAPE '\\' OR s.text LIKE ? ESCAPE '\\' OR s.speaker LIKE ? ESCAPE '\\')
          ORDER BY r.created_at DESC`
       )
-      .all(speakerName, searchTerm, searchTerm, searchTerm) as RecordingRow[];
+      .all(speakerName, searchTerm, searchTerm, searchTerm, searchTerm) as RecordingRow[];
   } else {
     // Just filter by speaker
     if (sourceFilter) {
@@ -377,6 +440,7 @@ export function dbRowToRecording(
   return {
     id: row.id,
     title: row.title,
+    customTitle: row.custom_title ?? undefined,
     description: row.description ?? undefined,
     videoUrl,
     posterUrl: undefined,
@@ -414,9 +478,20 @@ export function upsertRecording(recording: {
   createdAt: string;
 }): void {
   const db = getDb();
+  // Use INSERT ... ON CONFLICT to preserve custom_title when syncing
   db.prepare(
-    `INSERT OR REPLACE INTO recordings (id, title, description, video_url, duration, space, source, media_type, media_url_expires_at, created_at, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO recordings (id, title, description, video_url, duration, space, source, media_type, media_url_expires_at, created_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       description = excluded.description,
+       video_url = excluded.video_url,
+       duration = excluded.duration,
+       space = excluded.space,
+       source = excluded.source,
+       media_type = excluded.media_type,
+       media_url_expires_at = excluded.media_url_expires_at,
+       synced_at = excluded.synced_at`
   ).run(
     recording.id,
     recording.title,
@@ -597,7 +672,7 @@ export function getAllClipsWithRecordingTitle(): ClipWithRecordingRow[] {
   const db = getDb();
   return db
     .prepare(
-      `SELECT c.*, r.title as recording_title
+      `SELECT c.*, COALESCE(r.custom_title, r.title) as recording_title
        FROM clips c
        INNER JOIN recordings r ON c.recording_id = r.id
        ORDER BY c.created_at DESC`
