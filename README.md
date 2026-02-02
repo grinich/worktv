@@ -8,30 +8,18 @@ A powerful private video library for your team's meeting recordings. Sync record
 
 ## Screenshots
 
-<p align="center">
-  <img src="public/screenshots/grid-view.png" alt="Grid View" width="800" />
-</p>
-<p align="center"><em>Grid view with animated GIF previews on hover</em></p>
-
-<p align="center">
-  <img src="public/screenshots/recording-detail.png" alt="Recording Detail" width="800" />
-</p>
-<p align="center"><em>Recording detail with AI summary, video player, and speaker timeline</em></p>
-
-<p align="center">
-  <img src="public/screenshots/create-clip.png" alt="Create Clip" width="800" />
-</p>
-<p align="center"><em>Create clips with word-level precision using the transcript</em></p>
-
-<p align="center">
-  <img src="public/screenshots/calendar-view.png" alt="Calendar View" width="800" />
-</p>
-<p align="center"><em>Calendar view for browsing recordings by date</em></p>
-
-<p align="center">
-  <img src="public/screenshots/list-view.png" alt="List View" width="800" />
-</p>
-<p align="center"><em>List view with light theme support</em></p>
+<table>
+  <tr>
+    <td align="center"><img src="public/screenshots/grid-view.png" alt="Grid View" width="280" /><br /><em>Grid view</em></td>
+    <td align="center"><img src="public/screenshots/recording-detail.png" alt="Recording Detail" width="280" /><br /><em>Recording detail</em></td>
+    <td align="center"><img src="public/screenshots/create-clip.png" alt="Create Clip" width="280" /><br /><em>Create clips</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="public/screenshots/calendar-view.png" alt="Calendar View" width="280" /><br /><em>Calendar view</em></td>
+    <td align="center"><img src="public/screenshots/list-view.png" alt="List View" width="280" /><br /><em>List view</em></td>
+    <td></td>
+  </tr>
+</table>
 
 ## Features
 
