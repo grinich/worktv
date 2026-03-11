@@ -837,8 +837,38 @@ async function sync(): Promise<void> {
   db.close();
 }
 
-// Run
-sync().catch((error) => {
-  console.error("❌ Sync failed:", error);
-  process.exit(1);
-});
+// Run sync and optionally generate previews
+async function run() {
+  try {
+    await sync();
+
+    // Check if user wants to skip preview generation
+    const skipPreviews = process.argv.includes("--no-previews");
+
+    if (skipPreviews) {
+      console.log("\n✅ Sync complete! (Skipped preview generation)");
+      return;
+    }
+
+    // After successful sync, generate previews for new recordings
+    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("🎬 Generating preview GIFs for new recordings...\n");
+
+    // Use execSync to run the generate-previews script
+    // This will automatically skip recordings that already have previews
+    const { execSync } = await import("child_process");
+
+    // Inherit stdio so we can see the progress
+    execSync("npx tsx scripts/generate-previews.ts", {
+      cwd: process.cwd(),
+      stdio: "inherit",
+    });
+
+    console.log("\n✅ Sync and preview generation complete!");
+  } catch (error) {
+    console.error("❌ Sync failed:", error);
+    process.exit(1);
+  }
+}
+
+run();

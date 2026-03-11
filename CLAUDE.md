@@ -79,9 +79,32 @@ ANTHROPIC_API_KEY=
 
 ```bash
 npm run dev      # Start development server
-npm run sync     # Sync recordings from Zoom
+npm run sync     # Sync recordings from Zoom and generate preview GIFs
 npm run build    # Production build
 npm run lint     # Run ESLint
+```
+
+### Sync Command Options
+
+The `npm run sync` command now automatically generates preview GIFs after syncing:
+
+```bash
+npm run sync                    # Full sync + preview generation
+npm run sync -- --no-previews   # Sync only, skip preview generation
+npm run sync -- --force         # Force re-sync all recordings + previews
+
+# Advanced options
+npm run sync -- --years=5                   # Sync last 5 years
+npm run sync -- --parallel=10               # Process 10 recordings in parallel
+npm run sync -- --parallel-windows=12       # Fetch 12 date ranges in parallel
+```
+
+Preview generation options (when running separately):
+```bash
+npx tsx scripts/generate-previews.ts                 # Generate missing previews
+npx tsx scripts/generate-previews.ts --force         # Regenerate all previews
+npx tsx scripts/generate-previews.ts --parallel=5    # Process 5 recordings in parallel
+npx tsx scripts/generate-previews.ts --parallel-gifs=4  # Extract 4 GIF candidates in parallel
 ```
 
 ## API Endpoints
