@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { useTempDb } from "../../helpers/db";
 import {
+  getDb,
+  closeDb,
   upsertRecording,
   updateRecordingCustomTitle,
   getRecordingById,
@@ -169,6 +171,20 @@ describe("searchRecordingsWithContext — match types", () => {
     expect(r.match_type).toBe("speaker");
     expect(r.match_text).toBe("Carol");
   });
+
+  it("filters by source", () => {
+    addRecording({ id: "gongrec", title: "Budget Planning", source: "gong" });
+    expect(searchRecordingsWithContext("Budget", "zoom").map((r) => r.id)).toEqual(["rec-1"]);
+    expect(searchRecordingsWithContext("Budget", "gong").map((r) => r.id)).toEqual(["gongrec"]);
+    expect(searchRecordingsWithContext("Budget", "all")).toHaveLength(2);
+  });
+
+  it("treats the source value as a bound literal, not interpolated SQL", () => {
+    // A SQL-injection attempt in `source` must match nothing, not bypass the
+    // filter (which an interpolated `AND r.source = '<source>'` would allow).
+    const malicious = "zoom' OR '1'='1" as "zoom";
+    expect(searchRecordingsWithContext("Budget", malicious)).toEqual([]);
+  });
 });
 
 describe("searchRecordingsWithSpeaker — AND logic", () => {
@@ -238,6 +254,25 @@ describe("getAllUniqueSpeakers", () => {
     const speakers = getAllUniqueSpeakers();
     expect(speakers[0]).toMatchObject({ name: "Alice", count: 2 });
     expect(speakers.find((s) => s.name === "Bob")?.count).toBe(1);
+  });
+});
+
+describe("migrations", () => {
+  it("are idempotent across reopen, and migrated columns are present + usable", () => {
+    addRecording({ id: "rec-1" });
+    // custom_title only exists via the migration (not in CREATE TABLE).
+    updateRecordingCustomTitle("rec-1", "Custom");
+
+    // Reopen the same database file — applyColumnMigrations runs again against
+    // a populated table and must not throw "duplicate column".
+    closeDb();
+    expect(() => getDb()).not.toThrow();
+
+    const row = getRecordingById("rec-1");
+    expect(row?.custom_title).toBe("Custom");
+    // poster_url / preview_gif_url are migrated columns and should be selectable.
+    expect(row).toHaveProperty("poster_url");
+    expect(row).toHaveProperty("preview_gif_url");
   });
 });
 

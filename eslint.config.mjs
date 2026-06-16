@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated coverage output and ad-hoc debug utilities — not production
+    // code, shouldn't gate lint/CI.
+    "coverage/**",
+    "scripts/debug/**",
   ]),
 ]);
 

@@ -42,6 +42,15 @@ describe("POST /api/recordings/[id]/clips", () => {
     expect((await res.json()).error).toMatch(/required numbers/i);
   });
 
+  it("400s (not 500) on a malformed JSON body", async () => {
+    const req = new Request("http://test/api/recordings/rec-1/clips", {
+      method: "POST",
+      body: "{ not json",
+    });
+    const res = await POST(req, ctx("rec-1"));
+    expect(res.status).toBe(400);
+  });
+
   it("400s on an inverted/zero-length range", async () => {
     const res = await POST(postReq({ startTime: 30, endTime: 20 }), ctx("rec-1"));
     expect(res.status).toBe(400);

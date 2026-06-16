@@ -5,6 +5,7 @@ import {
   upsertSummary,
 } from "@/lib/db";
 import { generateTranscriptSummary, SUMMARY_MODEL } from "@/lib/ai/summarize";
+import { errorDetails } from "@/lib/api/errors";
 import type { AISummary } from "@/types/video";
 
 export async function GET(
@@ -82,7 +83,7 @@ export async function POST(
   } catch (error) {
     console.error("Failed to regenerate summary:", error);
     return NextResponse.json(
-      { error: "Failed to regenerate summary", details: String(error) },
+      { error: "Failed to regenerate summary", ...errorDetails(error) },
       { status: 500 }
     );
   }

@@ -5,6 +5,12 @@ import {
 } from "@/lib/zoom/recordings";
 import { transformZoomMeeting } from "@/lib/zoom/transform";
 import { updateRecordingCustomTitle, getRecordingById } from "@/lib/db";
+import { errorDetails } from "@/lib/api/errors";
+import { z } from "zod";
+
+const UpdateRecordingBody = z.object({
+  customTitle: z.string().nullable().optional(),
+});
 
 export async function GET(
   request: Request,
@@ -32,7 +38,7 @@ export async function GET(
   } catch (error) {
     console.error("Failed to fetch recording:", error);
     return NextResponse.json(
-      { error: "Failed to fetch recording", details: String(error) },
+      { error: "Failed to fetch recording", ...errorDetails(error) },
       { status: 500 }
     );
   }
@@ -45,8 +51,15 @@ export async function PATCH(
   const { id } = await params;
 
   try {
-    const body = await request.json();
-    const { customTitle } = body;
+    const body = await request.json().catch(() => null);
+    const parsed = UpdateRecordingBody.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "customTitle must be a string or null" },
+        { status: 400 }
+      );
+    }
+    const { customTitle } = parsed.data;
 
     // Verify recording exists
     const recording = getRecordingById(id);
@@ -64,7 +77,7 @@ export async function PATCH(
   } catch (error) {
     console.error("Failed to update recording:", error);
     return NextResponse.json(
-      { error: "Failed to update recording", details: String(error) },
+      { error: "Failed to update recording", ...errorDetails(error) },
       { status: 500 }
     );
   }

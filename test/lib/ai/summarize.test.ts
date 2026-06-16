@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TranscriptSegment } from "@/types/video";
 
-// Mock the Anthropic SDK so no network call happens. `createMock` is what each
-// test configures to control the model's "response".
+// Mock the Anthropic SDK so no network call happens. Summaries go through
+// messages.parse (structured outputs); clip titles through messages.create.
 const createMock = vi.fn();
+const parseMock = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class {
-      messages = { create: createMock };
+      messages = { create: createMock, parse: parseMock };
     },
   };
 });
@@ -31,6 +32,7 @@ const segments: TranscriptSegment[] = [
 
 beforeEach(() => {
   createMock.mockReset();
+  parseMock.mockReset();
 });
 
 describe("generateTranscriptSummary", () => {
@@ -39,70 +41,31 @@ describe("generateTranscriptSummary", () => {
     expect(result.brief).toMatch(/no transcript/i);
     expect(result.keyPoints).toEqual([]);
     expect(result.nextSteps).toEqual([]);
-    expect(createMock).not.toHaveBeenCalled();
+    expect(parseMock).not.toHaveBeenCalled();
   });
 
-  it("parses a plain JSON response", async () => {
-    createMock.mockResolvedValue(
-      textResponse(JSON.stringify({ brief: "A sync.", keyPoints: ["Ship Friday"], nextSteps: ["Bob owns release"] }))
-    );
-    const result = await generateTranscriptSummary(segments);
-    expect(result).toEqual({ brief: "A sync.", keyPoints: ["Ship Friday"], nextSteps: ["Bob owns release"] });
+  it("returns the structured parsed_output from the API", async () => {
+    const summary = { brief: "A sync.", keyPoints: ["Ship Friday"], nextSteps: ["Bob owns release"] };
+    parseMock.mockResolvedValue({ parsed_output: summary });
+    expect(await generateTranscriptSummary(segments)).toEqual(summary);
   });
 
-  it("strips a ```json fenced code block before parsing", async () => {
-    createMock.mockResolvedValue(
-      textResponse('```json\n{"brief":"x","keyPoints":[],"nextSteps":[]}\n```')
-    );
-    const result = await generateTranscriptSummary(segments);
-    expect(result.brief).toBe("x");
+  it("throws when no structured output is returned (e.g. refusal)", async () => {
+    parseMock.mockResolvedValue({ parsed_output: null });
+    await expect(generateTranscriptSummary(segments)).rejects.toThrow(/structured summary/i);
   });
 
-  it("strips a bare ``` fence too", async () => {
-    createMock.mockResolvedValue(
-      textResponse('```\n{"brief":"y","keyPoints":[],"nextSteps":[]}\n```')
-    );
-    expect((await generateTranscriptSummary(segments)).brief).toBe("y");
-  });
-
-  it("normalizes object array items to strings (action/text/JSON fallback)", async () => {
-    createMock.mockResolvedValue(
-      textResponse(
-        JSON.stringify({
-          brief: "z",
-          keyPoints: [{ text: "a point" }, "plain"],
-          nextSteps: [{ action: "do thing" }, { owner: "Bob" }],
-        })
-      )
-    );
-    const result = await generateTranscriptSummary(segments);
-    expect(result.keyPoints).toEqual(["a point", "plain"]);
-    expect(result.nextSteps[0]).toBe("do thing");
-    // No action/text key -> falls back to JSON.stringify of the object.
-    expect(result.nextSteps[1]).toBe(JSON.stringify({ owner: "Bob" }));
-  });
-
-  it("throws on invalid JSON", async () => {
-    createMock.mockResolvedValue(textResponse("not json at all"));
-    await expect(generateTranscriptSummary(segments)).rejects.toThrow(/parse/i);
-  });
-
-  it("throws when the response shape is invalid", async () => {
-    createMock.mockResolvedValue(textResponse(JSON.stringify({ brief: "x", keyPoints: "nope" })));
-    await expect(generateTranscriptSummary(segments)).rejects.toThrow(/invalid summary/i);
-  });
-
-  it("throws when the response is not a text block", async () => {
-    createMock.mockResolvedValue({ content: [{ type: "tool_use" }] });
-    await expect(generateTranscriptSummary(segments)).rejects.toThrow(/unexpected response/i);
-  });
-
-  it("sends the configured Haiku model and a bounded max_tokens", async () => {
-    createMock.mockResolvedValue(textResponse(JSON.stringify({ brief: "x", keyPoints: [], nextSteps: [] })));
+  it("requests structured output with the configured Haiku model and bounded max_tokens", async () => {
+    parseMock.mockResolvedValue({ parsed_output: { brief: "x", keyPoints: [], nextSteps: [] } });
     await generateTranscriptSummary(segments);
-    const arg = createMock.mock.calls[0][0];
+    const arg = parseMock.mock.calls[0][0];
     expect(arg.model).toBe("claude-haiku-4-5-20251001");
     expect(arg.max_tokens).toBe(8192);
+    // A json_schema format is attached so the API enforces the response shape.
+    expect(arg.output_config.format.type).toBe("json_schema");
+    expect(arg.output_config.format.schema.required).toEqual(
+      expect.arrayContaining(["brief", "keyPoints", "nextSteps"])
+    );
     // The transcript is formatted as "[speaker]: text" lines in the prompt.
     expect(arg.messages[0].content).toContain("[Alice]: We should ship Friday.");
   });

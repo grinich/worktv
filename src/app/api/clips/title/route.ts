@@ -1,21 +1,33 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { generateClipTitle } from "@/lib/ai/summarize";
-import type { TranscriptSegment } from "@/types/video";
+
+const Segment = z.object({
+  id: z.string(),
+  startTime: z.number(),
+  endTime: z.number(),
+  speaker: z.string(),
+  text: z.string(),
+});
+
+const ClipTitleBody = z.object({
+  clipSegments: z.array(Segment),
+  fullTranscript: z.array(Segment).optional(),
+});
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { clipSegments, fullTranscript } = body as {
-      clipSegments: TranscriptSegment[];
-      fullTranscript?: TranscriptSegment[];
-    };
+    const body = await request.json().catch(() => null);
+    const parsed = ClipTitleBody.safeParse(body);
 
-    if (!clipSegments || !Array.isArray(clipSegments)) {
+    if (!parsed.success) {
       return NextResponse.json(
         { error: "clipSegments array is required" },
         { status: 400 }
       );
     }
+
+    const { clipSegments, fullTranscript } = parsed.data;
 
     if (clipSegments.length === 0) {
       return NextResponse.json({ title: "" });

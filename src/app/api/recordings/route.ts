@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listRecordings } from "@/lib/zoom/recordings";
 import { transformZoomMeetingToListItem } from "@/lib/zoom/transform";
+import { errorDetails } from "@/lib/api/errors";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Failed to fetch recordings:", error);
     return NextResponse.json(
-      { error: "Failed to fetch recordings", details: String(error) },
+      { error: "Failed to fetch recordings", ...errorDetails(error) },
       { status: 500 }
     );
   }

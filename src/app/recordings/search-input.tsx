@@ -46,7 +46,7 @@ export function SearchInput({
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(
     defaultParticipant ?? null
   );
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -60,9 +60,12 @@ export function SearchInput({
     const urlQuery = searchParams.get("q") ?? "";
     const urlSpeakers = searchParams.getAll("speaker");
     const urlParticipant = searchParams.get("participant");
+    // Mirror URL state into local state when the URL changes (e.g. "Clear").
+    /* eslint-disable react-hooks/set-state-in-effect */
     setQuery(urlQuery);
     setSelectedSpeakers(urlSpeakers);
     setSelectedParticipant(urlParticipant);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams]);
 
   // Fetch speakers and participants on mount
@@ -118,6 +121,7 @@ export function SearchInput({
 
   // Reset highlighted index when filtered items change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlightedIndex(0);
   }, [filteredItems]);
 

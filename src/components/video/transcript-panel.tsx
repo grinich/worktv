@@ -47,6 +47,7 @@ export function TranscriptPanel({
 
   // Reset match index when search query changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentMatchIndex(0);
   }, [searchQuery]);
 
@@ -218,7 +219,7 @@ export function TranscriptPanel({
             })
           ) : (
             <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
-              No results found for "{searchQuery}"
+              No results found for &ldquo;{searchQuery}&rdquo;
             </div>
           )
         ) : (

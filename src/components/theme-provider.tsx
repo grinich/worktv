@@ -27,8 +27,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // The actual theme being displayed
   const theme: Theme = override ?? systemTheme;
 
-  // Initialize from localStorage and system preference
+  // Initialize from localStorage and system preference (client-only; avoids an
+  // SSR hydration mismatch on theme).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     // Check for new key first, then migrate from old key if needed
     let stored = localStorage.getItem("theme-override");

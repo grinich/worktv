@@ -1,5 +1,9 @@
 // Centralized constants used across the app
 
+// Claude model used for AI summaries and clip titles. Haiku 4.5 supports
+// structured outputs, which the summary generator relies on.
+export const SUMMARY_MODEL = "claude-haiku-4-5-20251001";
+
 // Colors assigned to speakers in transcripts
 export const SPEAKER_COLORS = [
   "#6366f1", // indigo

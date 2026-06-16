@@ -37,7 +37,7 @@ export function ClipCreator({
   const [isPlaying, setIsPlaying] = useState(false);
   const [settingPoint, setSettingPoint] = useState<"in" | "out" | null>(null);
   const [draggingHandle, setDraggingHandle] = useState<"start" | "end" | null>(null);
-  const [suggestedTitle, setSuggestedTitle] = useState("");
+  const [, setSuggestedTitle] = useState("");
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
   const clipDuration = endTime - startTime;

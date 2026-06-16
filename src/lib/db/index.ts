@@ -12,21 +12,30 @@ function getDbPath(): string {
 
 let db: Database.Database | null = null;
 
-function runMigrations(database: Database.Database): void {
-  // Get existing columns in recordings table
-  const columns = database
-    .prepare("PRAGMA table_info(recordings)")
-    .all() as { name: string }[];
-  const columnNames = new Set(columns.map((c) => c.name));
+// Applies column-add migrations declared as `-- MIGRATION:ADD_COLUMN:table:col:def`
+// comments in schema.sql. Idempotent: checks PRAGMA table_info and adds only
+// missing columns. This is the single migration mechanism — fresh databases get
+// columns from the CREATE TABLE statements, older databases get them here.
+function applyColumnMigrations(database: Database.Database, schema: string): void {
+  const migrationRegex = /-- MIGRATION:ADD_COLUMN:(\w+):(\w+):(.+)/g;
+  const existingColumns = new Map<string, Set<string>>();
 
-  // Add poster_url column if it doesn't exist
-  if (!columnNames.has("poster_url")) {
-    database.exec("ALTER TABLE recordings ADD COLUMN poster_url TEXT");
-  }
+  let match;
+  while ((match = migrationRegex.exec(schema)) !== null) {
+    const [, table, column, definition] = match;
 
-  // Add preview_gif_url column if it doesn't exist
-  if (!columnNames.has("preview_gif_url")) {
-    database.exec("ALTER TABLE recordings ADD COLUMN preview_gif_url TEXT");
+    if (!existingColumns.has(table)) {
+      const cols = database
+        .prepare(`PRAGMA table_info(${table})`)
+        .all() as { name: string }[];
+      existingColumns.set(table, new Set(cols.map((c) => c.name)));
+    }
+    const columns = existingColumns.get(table)!;
+
+    if (!columns.has(column)) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      columns.add(column);
+    }
   }
 }
 
@@ -45,36 +54,11 @@ export function getDb(): Database.Database {
     const schemaPath = join(process.cwd(), "src", "lib", "db", "schema.sql");
     const schema = readFileSync(schemaPath, "utf-8");
 
-    // Separate main schema from migration comments
-    const migrationRegex =
-      /-- MIGRATION:ADD_COLUMN:(\w+):(\w+):(.+)/g;
-    const migrations: { table: string; column: string; definition: string }[] =
-      [];
-    let match;
-    while ((match = migrationRegex.exec(schema)) !== null) {
-      migrations.push({
-        table: match[1],
-        column: match[2],
-        definition: match[3],
-      });
-    }
-
     // Run main schema (CREATE TABLE IF NOT EXISTS statements are safe)
     db.exec(schema);
 
-    // Run migrations with error handling (column may already exist)
-    for (const migration of migrations) {
-      try {
-        db.exec(
-          `ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.definition}`
-        );
-      } catch {
-        // Column already exists, ignore
-      }
-    }
-
-    // Run additional migrations for preview GIFs
-    runMigrations(db);
+    // Apply column-add migrations for databases created before newer columns existed.
+    applyColumnMigrations(db, schema);
   }
   return db;
 }
@@ -335,7 +319,9 @@ export function searchRecordingsWithContext(
 ): SearchResultRow[] {
   const db = getDb();
   const searchTerm = `%${escapeLikeWildcards(query)}%`;
-  const sourceFilter = source && source !== "all" ? `AND r.source = '${source}'` : "";
+  // Bind source as a parameter rather than interpolating it into the SQL.
+  const hasSourceFilter = Boolean(source && source !== "all");
+  const sourceFilter = hasSourceFilter ? "AND r.source = ?" : "";
 
   // Query that determines match type and includes context
   const sql = `
@@ -364,14 +350,15 @@ export function searchRecordingsWithContext(
     ORDER BY r.created_at DESC
   `;
 
-  return db
-    .prepare(sql)
-    .all(
-      searchTerm, searchTerm, searchTerm, // match_type CASE
-      searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, // match_text CASE
-      searchTerm, searchTerm, searchTerm, searchTerm, // match_time CASE
-      searchTerm, searchTerm, searchTerm, searchTerm // WHERE clause
-    ) as SearchResultRow[];
+  const params = [
+    searchTerm, searchTerm, searchTerm, // match_type CASE
+    searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, // match_text CASE
+    searchTerm, searchTerm, searchTerm, searchTerm, // match_time CASE
+    ...(hasSourceFilter ? [source as string] : []), // WHERE source filter
+    searchTerm, searchTerm, searchTerm, searchTerm, // WHERE clause
+  ];
+
+  return db.prepare(sql).all(...params) as SearchResultRow[];
 }
 
 export function getRecordingById(id: string): RecordingRow | undefined {
@@ -935,7 +922,9 @@ export function getClipsByRecordingId(recordingId: string): ClipRow[] {
     .all(recordingId) as ClipRow[];
 }
 
-function generateClipTitle(recordingId: string, startTime: number, endTime: number): string | null {
+// Derives a clip title from the transcript segments overlapping the clip's time
+// range. Distinct from the AI-based generateClipTitle in @/lib/ai/summarize.
+function deriveClipTitleFromTranscript(recordingId: string, startTime: number, endTime: number): string | null {
   const db = getDb();
   const segments = db
     .prepare(
@@ -961,7 +950,7 @@ export function insertClip(clip: {
   endTime: number;
 }): ClipRow {
   const db = getDb();
-  const title = clip.title || generateClipTitle(clip.recordingId, clip.startTime, clip.endTime);
+  const title = clip.title || deriveClipTitleFromTranscript(clip.recordingId, clip.startTime, clip.endTime);
   const createdAt = new Date().toISOString();
 
   db.prepare(

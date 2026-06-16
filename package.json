@@ -25,7 +25,11 @@
     "nanoid": "^5.1.6",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=20 <23"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

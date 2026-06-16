@@ -142,7 +142,7 @@ export default async function HomePage({
     <div className="flex flex-col gap-4">
       <NavTitle>
         <h1 className="text-xl font-semibold text-zinc-50 light:text-zinc-900">
-          Let's watch WorkTV
+          Let&apos;s watch WorkTV
         </h1>
       </NavTitle>
       <Suspense fallback={<div className="h-10 animate-pulse rounded-xl bg-zinc-800 light:bg-zinc-200" />}>
@@ -188,7 +188,7 @@ export default async function HomePage({
             )}
             {q && (
               <>
-                {" "}for "{q}"
+                {" "}for &ldquo;{q}&rdquo;
               </>
             )}
           </span>

@@ -7,6 +7,8 @@ export function NavTitle({ children }: { children: ReactNode }) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
+    // Resolve the client-only portal target after mount (not available during SSR).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContainer(document.getElementById("nav-title"));
   }, []);
 

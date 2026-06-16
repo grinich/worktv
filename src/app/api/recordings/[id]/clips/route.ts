@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import {
   getClipsByRecordingId,
   getRecordingById,
   insertClip,
   dbRowToClip,
 } from "@/lib/db";
+
+const CreateClipBody = z.object({
+  startTime: z.number(),
+  endTime: z.number(),
+  title: z.string().optional(),
+});
 
 export async function GET(
   request: Request,
@@ -50,15 +57,17 @@ export async function POST(
       );
     }
 
-    const body = await request.json();
-    const { startTime, endTime, title } = body;
+    const body = await request.json().catch(() => null);
+    const parsed = CreateClipBody.safeParse(body);
 
-    if (typeof startTime !== "number" || typeof endTime !== "number") {
+    if (!parsed.success) {
       return NextResponse.json(
         { error: "startTime and endTime are required numbers" },
         { status: 400 }
       );
     }
+
+    const { startTime, endTime, title } = parsed.data;
 
     if (startTime < 0 || endTime <= startTime) {
       return NextResponse.json(
