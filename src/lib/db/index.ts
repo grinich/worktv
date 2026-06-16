@@ -3,7 +3,12 @@ import { readFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import type { Recording, TranscriptSegment, Speaker, Clip, Participant } from "@/types/video";
 
-const DB_PATH = join(process.cwd(), "data", "recordings.db");
+// Allow overriding the DB location (used by the test suite to point at an
+// isolated temp database). Resolved lazily so tests can set the env var at
+// runtime. Defaults to the production path, so prod behavior is unchanged.
+function getDbPath(): string {
+  return process.env.WORKTV_DB_PATH || join(process.cwd(), "data", "recordings.db");
+}
 
 let db: Database.Database | null = null;
 
@@ -32,7 +37,7 @@ export function getDb(): Database.Database {
       mkdirSync(dataDir, { recursive: true });
     }
 
-    db = new Database(DB_PATH);
+    db = new Database(getDbPath());
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
 
@@ -72,6 +77,15 @@ export function getDb(): Database.Database {
     runMigrations(db);
   }
   return db;
+}
+
+// Close and reset the cached connection. Primarily for tests, which point
+// WORKTV_DB_PATH at a fresh temp file per case and need a clean singleton.
+export function closeDb(): void {
+  if (db) {
+    db.close();
+    db = null;
+  }
 }
 
 export interface RecordingRow {
@@ -925,7 +939,7 @@ function generateClipTitle(recordingId: string, startTime: number, endTime: numb
   const db = getDb();
   const segments = db
     .prepare(
-      `SELECT text FROM transcript_segments
+      `SELECT text FROM segments
        WHERE recording_id = ? AND start_time < ? AND end_time > ?
        ORDER BY start_time
        LIMIT 5`

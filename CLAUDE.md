@@ -78,10 +78,13 @@ ANTHROPIC_API_KEY=
 ## Commands
 
 ```bash
-npm run dev      # Start development server
-npm run sync     # Sync recordings from Zoom and generate preview GIFs
-npm run build    # Production build
-npm run lint     # Run ESLint
+npm run dev           # Start development server
+npm run sync          # Sync recordings from Zoom and generate preview GIFs
+npm run build         # Production build
+npm run lint          # Run ESLint
+npm test              # Run the Vitest suite once
+npm run test:watch    # Vitest in watch mode
+npm run test:coverage # Vitest with coverage
 ```
 
 ### Sync Command Options
@@ -106,6 +109,21 @@ npx tsx scripts/generate-previews.ts --force         # Regenerate all previews
 npx tsx scripts/generate-previews.ts --parallel=5    # Process 5 recordings in parallel
 npx tsx scripts/generate-previews.ts --parallel-gifs=4  # Extract 4 GIF candidates in parallel
 ```
+
+## Testing
+
+- Framework: [Vitest](https://vitest.dev). Tests live in `test/`, mirroring `src/`.
+- Config: `vitest.config.ts` (Node environment by default; `@/` alias via
+  `vite-tsconfig-paths`; `better-sqlite3` kept external).
+- The DB layer resolves its path from `WORKTV_DB_PATH` (falls back to
+  `data/recordings.db`). `test/helpers/db.ts#useTempDb()` points it at an
+  isolated temp database per test and resets the cached connection via
+  `closeDb()`. Use real temp DBs for data-layer/route tests rather than mocking
+  better-sqlite3.
+- Mock the Anthropic SDK (or `@/lib/ai/summarize`) in tests — never hit the
+  network.
+- Coverage focus: `src/lib/**` (transforms, db) and `src/app/api/**` (route
+  handlers).
 
 ## API Endpoints
 

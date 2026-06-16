@@ -180,6 +180,27 @@ npm run generate-previews -- --limit=10      # Process only N recordings
 npm run generate-previews -- --parallel=5    # Configure parallelism
 ```
 
+## Testing
+
+Tests use [Vitest](https://vitest.dev) and live under `test/`, mirroring the
+`src/` layout. They cover the pure transform/parsing logic (Zoom + Gong), the AI
+summary/clip-title response handling (with the Anthropic SDK mocked), the SQLite
+data layer (against an isolated temp database per test), and the API route
+handlers (invoked directly).
+
+```bash
+npm test              # Run the suite once
+npm run test:watch    # Re-run on change
+npm run test:coverage # Run with a coverage report
+```
+
+Notes:
+- The data layer reads `WORKTV_DB_PATH` to locate the SQLite file (defaulting to
+  `data/recordings.db`). Tests point it at a temp file so they never touch real
+  data; nothing else needs to set it.
+- Tests run on the project's pinned Node version (see `.node-version`). The
+  native `better-sqlite3` binary must match that Node version.
+
 ## Tech Stack
 
 - [Next.js](https://nextjs.org) 16 with App Router

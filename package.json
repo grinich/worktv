@@ -12,7 +12,10 @@
     "sync:zoom": "tsx scripts/sync-zoom.ts",
     "sync:gong": "tsx scripts/sync-gong.ts",
     "generate-previews": "tsx scripts/generate-previews.ts",
-    "db:clear": "rm -f data/recordings.db data/recordings.db-shm data/recordings.db-wal && echo 'Database cleared. Run npm run sync to re-populate.'"
+    "db:clear": "rm -f data/recordings.db data/recordings.db-shm data/recordings.db-wal && echo 'Database cleared. Run npm run sync to re-populate.'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
@@ -26,14 +29,21 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.2.6",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "jsdom": "^25.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.6"
   }
 }
